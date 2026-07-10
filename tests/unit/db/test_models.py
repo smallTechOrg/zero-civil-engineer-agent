@@ -42,6 +42,8 @@ def test_design_run_defaults_and_roundtrip(_isolated_db):
     with Session(_isolated_db) as s:
         run = s.get(DesignRunRow, run_id)
         assert run.status == "running"
+        assert run.component_type == "box_culvert"  # default (migration 0003)
+        assert run.type_summary_json is None
         assert run.prompt_tokens == 0
         assert run.completion_tokens == 0
         assert run.cost_usd == 0.0
@@ -50,6 +52,27 @@ def test_design_run_defaults_and_roundtrip(_isolated_db):
         assert run.started_at is not None
         assert run.completed_at is None
         assert run.duration_ms is None
+
+
+def test_design_run_records_component_type_and_type_summary(_isolated_db):
+    with Session(_isolated_db) as s:
+        sess = SessionRow()
+        s.add(sess)
+        s.flush()
+        run = DesignRunRow(
+            session_id=sess.id,
+            prompt="5 m retaining wall for a cutting",
+            component_type="rcc_cantilever_retaining_wall",
+            type_summary_json=json.dumps({"fos_overturning": 2.4, "fos_sliding": 1.7}),
+        )
+        s.add(run)
+        s.commit()
+        run_id = run.id
+
+    with Session(_isolated_db) as s:
+        run = s.get(DesignRunRow, run_id)
+        assert run.component_type == "rcc_cantilever_retaining_wall"
+        assert json.loads(run.type_summary_json)["fos_overturning"] == 2.4
 
 
 def test_design_run_json_columns_roundtrip(_isolated_db):

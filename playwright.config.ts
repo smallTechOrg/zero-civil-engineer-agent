@@ -4,11 +4,11 @@ import { defineConfig, devices } from '@playwright/test'
 // built frontend at /app and the API at /api on a single origin. Real Gemini
 // runs take 30–90 s, hence the generous test timeout.
 //
-// Port parameterization: the phase gate sets E2E_PORT (e.g. 8002) so the E2E
-// suite boots its own isolated server while the presenter's live server keeps
-// the default 8001. When E2E_PORT is unset, behaviour is unchanged (8001,
-// reuse an already-running server).
-const port = process.env.E2E_PORT ?? '8001'
+// Port parameterization: the phase gate boots its own isolated server on port
+// 8004 (E2E_PORT=8004) so it never collides with a presenter's live server on
+// 8001. The default is 8004 (NOT 8001) so a bare `npx playwright test` also runs
+// against an owned instance; set E2E_PORT to pin any other port.
+const port = process.env.E2E_PORT ?? '8004'
 
 export default defineConfig({
   testDir: 'tests/e2e',

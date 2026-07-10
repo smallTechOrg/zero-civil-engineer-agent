@@ -5,7 +5,7 @@ drawing slice, so they gate the LLM extension independently.
 """
 
 from graph.extraction import ExtractionResult
-from graph.nodes import UnderstandResult, _load_prompt
+from graph.nodes import UnderstandResult, _load_prompt, understand_system_prompt
 from llm.client import LLMClient
 
 CANONICAL_PROMPT = (
@@ -36,23 +36,24 @@ def test_structured_extraction_parses_the_canonical_prompt(require_gemini):
     assert result.latency_ms > 0
 
 
-def test_scope_gate_accepts_the_canonical_prompt_with_a_plan(require_gemini):
+def test_scope_gate_accepts_and_classifies_the_canonical_prompt(require_gemini):
     result = LLMClient().generate(
         f"Current request: {CANONICAL_PROMPT}",
-        system=_load_prompt("understand.md"),
+        system=understand_system_prompt(),
         schema=UnderstandResult,
         temperature=0.2,
     )
 
     parsed = result.parsed
     assert parsed.in_scope is True
+    assert parsed.component_type == "box_culvert"  # real-LLM classification
     assert parsed.plan and len(parsed.plan) > 20
 
 
 def test_scope_gate_rejects_a_suspension_bridge_gracefully(require_gemini):
     result = LLMClient().generate(
         "Current request: design a suspension bridge",
-        system=_load_prompt("understand.md"),
+        system=understand_system_prompt(),
         schema=UnderstandResult,
         temperature=0.2,
     )

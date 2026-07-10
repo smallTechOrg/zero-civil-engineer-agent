@@ -20,6 +20,9 @@ class DesignSubmitRequest(BaseModel):
     # Default "" so a missing prompt takes the same EMPTY_PROMPT path as a blank one.
     prompt: str = ""
     preset_id: str | None = None
+    # Optional picker choice (registry type_id) — overrides auto-detect. Omit to
+    # auto-detect the component from the prompt.
+    component_type: str | None = None
 
 
 # --- Responses ----------------------------------------------------------------
@@ -61,14 +64,26 @@ class ArtefactInfo(BaseModel):
     size_bytes: int
 
 
+class ComponentInfo(BaseModel):
+    type_id: str
+    display_name: str
+    domain: str
+    summary: str
+    status: str
+    codes: list[str] = Field(default_factory=list)
+    example_prompt: str = ""
+
+
 class RunSnapshot(BaseModel):
     run_id: str
     session_id: str
     prompt: str
+    component_type: str = "box_culvert"
     status: str
     plan_text: str | None = None
     scope_message: str | None = None
     clarification_question: str | None = None
+    type_summary: dict[str, Any] | None = None
     params: dict[str, Any] | None = None
     assumptions: list[dict[str, Any]] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)

@@ -135,6 +135,7 @@ def finish_run(
     run_id: str,
     *,
     status: str,
+    component_type: str | None = None,
     error_message: str | None = None,
     clarification_question: str | None = None,
     plan_text: str | None = None,
@@ -146,6 +147,7 @@ def finish_run(
     checks: list[dict] | None = None,
     checklist: list[dict] | None = None,
     verdict: str | None = None,
+    type_summary: dict | None = None,
     suggestions: list[str] | None = None,
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
@@ -161,6 +163,8 @@ def finish_run(
         if row is None:
             raise RuntimeError(f"design run {run_id} not found while persisting {status}")
         row.status = status
+        if component_type is not None:
+            row.component_type = component_type
         row.error_message = error_message
         row.clarification_question = clarification_question
         row.plan_text = plan_text
@@ -172,6 +176,9 @@ def finish_run(
         row.checks_json = json.dumps(checks) if checks is not None else None
         row.checklist_json = json.dumps(checklist) if checklist is not None else None
         row.verdict = verdict
+        row.type_summary_json = (
+            json.dumps(type_summary) if type_summary is not None else None
+        )
         # Completed runs persist their (possibly empty) suggestions honestly;
         # non-completed terminals stay NULL → the snapshot serves [].
         row.suggestions_json = json.dumps(suggestions) if suggestions is not None else None

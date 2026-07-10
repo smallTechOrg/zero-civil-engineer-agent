@@ -104,26 +104,36 @@ class MergeOutcome:
 
 
 def merge_params(
-    extracted: dict, prior_params: dict | None, preset_values: dict
+    extracted: dict,
+    prior_params: dict | None,
+    preset_values: dict,
+    *,
+    known_fields: frozenset[str] | None = None,
+    critical_fields: tuple[str, ...] | None = None,
 ) -> MergeOutcome:
     """Merge order: this turn's values ← override prior accepted params ← override preset.
 
     Presets may never supply a critical field (criticals come from the user —
     directly this turn or carried from the session's last completed run).
+    `known_fields`/`critical_fields` default to the culvert's; the `extract` node
+    passes the selected component's `param_model` fields + `critical_fields` so
+    the merge is component-agnostic.
     """
-    turn = {k: v for k, v in extracted.items() if k in _KNOWN_FIELDS and v is not None}
+    known = _KNOWN_FIELDS if known_fields is None else known_fields
+    criticals = CRITICAL_FIELDS if critical_fields is None else tuple(critical_fields)
+    turn = {k: v for k, v in extracted.items() if k in known and v is not None}
     prior = {
-        k: v for k, v in (prior_params or {}).items() if k in _KNOWN_FIELDS and v is not None
+        k: v for k, v in (prior_params or {}).items() if k in known and v is not None
     }
     preset = {
         k: v
         for k, v in preset_values.items()
-        if k in _KNOWN_FIELDS and k not in CRITICAL_FIELDS and v is not None
+        if k in known and k not in criticals and v is not None
     }
 
     merged = {**preset, **prior, **turn}
     preset_fields = [k for k in preset if k not in prior and k not in turn]
-    missing_critical = [f for f in CRITICAL_FIELDS if merged.get(f) is None]
+    missing_critical = [f for f in criticals if merged.get(f) is None]
     return MergeOutcome(merged=merged, preset_fields=preset_fields, missing_critical=missing_critical)
 
 

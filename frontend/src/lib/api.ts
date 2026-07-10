@@ -1,4 +1,12 @@
-import type { DesignListing, Preset, RunSnapshot, SessionInfo, SessionSummary, SubmitDesignResponse } from './types'
+import type {
+  ComponentCatalogue,
+  DesignListing,
+  Preset,
+  RunSnapshot,
+  SessionInfo,
+  SessionSummary,
+  SubmitDesignResponse,
+} from './types'
 
 // All paths are root-relative on purpose: the app is served by FastAPI at /app,
 // and a relative path would be corrupted by the basePath.
@@ -52,10 +60,22 @@ export function createSession(title?: string): Promise<SessionInfo> {
   })
 }
 
-export function submitDesign(sessionId: string, prompt: string): Promise<SubmitDesignResponse> {
+export function listComponents(): Promise<ComponentCatalogue> {
+  return apiFetch<ComponentCatalogue>('/api/components')
+}
+
+export function submitDesign(
+  sessionId: string,
+  prompt: string,
+  componentType?: string | null,
+): Promise<SubmitDesignResponse> {
+  // component_type is sent only when the user explicitly picked an available
+  // component; omitting it lets `understand` auto-detect (spec/api.md).
+  const body: { prompt: string; component_type?: string } = { prompt }
+  if (componentType) body.component_type = componentType
   return apiFetch<SubmitDesignResponse>(`/api/sessions/${sessionId}/designs`, {
     method: 'POST',
-    body: JSON.stringify({ prompt }),
+    body: JSON.stringify(body),
   })
 }
 

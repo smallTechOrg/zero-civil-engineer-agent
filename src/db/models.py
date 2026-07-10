@@ -48,6 +48,9 @@ class DesignRunRow(Base):
     session_id: Mapped[str] = mapped_column(
         Text, ForeignKey("sessions.id"), nullable=False
     )
+    component_type: Mapped[str] = mapped_column(
+        Text, nullable=False, default="box_culvert"
+    )
     prompt: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, nullable=False, default="running")
     plan_text: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -60,6 +63,7 @@ class DesignRunRow(Base):
     checks_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     checklist_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     verdict: Mapped[str | None] = mapped_column(Text, nullable=True)
+    type_summary_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     suggestions_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     prompt_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
