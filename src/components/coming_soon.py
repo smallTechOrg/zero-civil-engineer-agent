@@ -24,8 +24,10 @@ The graph dispatches only to `status="available"` types, whose `param_model` /
 read never raises; they are never populated.
 
 Registration order == gallery order. `src/components/__init__.py` imports this
-module AFTER the two available civil components, so the available cards (Box
-Culvert, Retaining Wall) sort ahead of these previews.
+module AFTER every available component, so the available cards sort ahead of
+these previews. As of Expansion Phase 2 only the three mechanical types remain
+here; the civil breadth types (plate girder, slab/T-beam, pier & abutment) are
+now real available modules.
 """
 
 from __future__ import annotations
@@ -69,60 +71,12 @@ class ComingSoonComponent:
     geometry_model: type[BaseModel] = _PendingModel
 
 
-# --- Civil breadth (Expansion Phase 2) --------------------------------------------
-
-PLATE_GIRDER = ComingSoonComponent(
-    type_id="plate_girder",
-    display_name="Steel Plate Girder Superstructure",
-    domain="civil",
-    summary=(
-        "Welded steel plate-girder railway bridge superstructure — flange/web "
-        "sizing, bending & shear capacity, stiffener design, a dimensioned GA "
-        "drawing + 3D model, and the same IR-protocol proof-check to the IRS "
-        "Steel Bridge Code / IS 800."
-    ),
-    codes=["IRS Steel Bridge Code", "IS 800"],
-    scope_examples=[
-        "design a steel plate girder for a 24 m railway bridge span, BG single line",
-        "welded plate-girder superstructure, 25t loading, deck-type girder",
-    ],
-)
-
-SLAB_TBEAM = ComingSoonComponent(
-    type_id="slab_tbeam",
-    display_name="RCC Slab / T-beam Superstructure",
-    domain="civil",
-    summary=(
-        "RCC slab and T-beam railway bridge superstructure — deck/girder sizing, "
-        "flexure & shear design, a dimensioned GA drawing + 3D model, and the "
-        "same IR-protocol proof-check to the IRS Concrete Bridge Code / IS 456."
-    ),
-    codes=["IRS Concrete Bridge Code", "IS 456"],
-    scope_examples=[
-        "design an RCC T-beam superstructure for a 12 m railway span",
-        "solid RCC slab bridge deck, 6 m span, 25t loading",
-    ],
-)
-
-PIER_ABUTMENT = ComingSoonComponent(
-    type_id="pier_abutment",
-    display_name="Pier & Abutment Substructure",
-    domain="civil",
-    summary=(
-        "Bridge pier and abutment substructure — load combinations, stability and "
-        "foundation-pressure checks, RCC section design, a GA drawing + 3D model, "
-        "and the same IR-protocol proof-check to the IRS Bridge Substructure & "
-        "Foundation Code."
-    ),
-    codes=["IRS Bridge Substructure & Foundation Code", "IRS Bridge Rules"],
-    scope_examples=[
-        "design a bridge pier for a 20 m railway span, SBC 300 kN/m²",
-        "RCC abutment with wing walls for a single-span railway bridge",
-    ],
-)
-
-
 # --- Mechanical domain (Expansion Phase 3) ----------------------------------------
+#
+# The three civil breadth types (plate_girder, slab_tbeam, pier_abutment) were
+# roadmap stubs here through Expansion Phase 1; as of Expansion Phase 2 they are
+# real, self-registering `available` component packages (src/components/<type>/),
+# so their stubs have been removed. Only the mechanical previews remain.
 
 STRUCTURAL_STEEL_MEMBER = ComingSoonComponent(
     type_id="structural_steel_member",
@@ -174,11 +128,10 @@ MACHINE_ELEMENT = ComingSoonComponent(
 )
 
 
-# Registration order == gallery order: civil previews first, then mechanical.
+# Registration order == gallery order: the mechanical previews (Expansion
+# Phase 3). The civil types are now built, available modules registered ahead of
+# this import (see src/components/__init__.py).
 _COMING_SOON: tuple[ComingSoonComponent, ...] = (
-    PLATE_GIRDER,
-    SLAB_TBEAM,
-    PIER_ABUTMENT,
     STRUCTURAL_STEEL_MEMBER,
     ROLLING_STOCK_MEMBER,
     MACHINE_ELEMENT,

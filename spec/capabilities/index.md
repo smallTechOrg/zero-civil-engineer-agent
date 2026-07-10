@@ -8,6 +8,9 @@ One file per capability — each describes exactly one discrete thing the agent 
 |-----------|------|-------|
 | **Component Registry & Shared-Core Framework** (registry, common component interface, domain plug-ins, auto-detect + picker) | [component-registry.md](component-registry.md) | Expansion 1 |
 | **RCC Cantilever Retaining Wall** (second registered component — earth pressure + stability + RCC design + drawing + 3D + proof-check) | [retaining-wall.md](retaining-wall.md) | Expansion 1 |
+| **Steel Plate Girder Superstructure** (breadth-first component — girder sizing + bending/shear/deflection checks + drawing + 3D + proof-check; IRS Steel Bridge Code / IS 800) | [plate-girder.md](plate-girder.md) | Expansion 2 |
+| **RCC Slab / T-beam Superstructure** (breadth-first component — flexure/shear/min-steel/deflection checks + drawing + 3D + proof-check; IRS Concrete Bridge Code / IS 456) | [slab-tbeam.md](slab-tbeam.md) | Expansion 2 |
+| **Bridge Pier & Abutment Substructure** (breadth-first component — stability + bearing + concrete-stress checks + drawing + 3D + proof-check; IRS Bridge Substructure & Foundation Code / IRS Bridge Rules) | [pier-abutment.md](pier-abutment.md) | Expansion 2 |
 | NL Design Intake (scope gate, **component classification**, extraction, one clarifying question, unusual-value flags) | [nl-design-intake.md](nl-design-intake.md) | 1 (generalised in Expansion 1) |
 | IRS Design Engine (sizing → loads → frame analysis → IRS CBC checks, pluggable loading standard) | [irs-engine.md](irs-engine.md) | 1 (sizing) / 2 (full) |
 | GA Drawing (parametric DXF + server-rendered SVG, pan/zoom, DXF download) | [ga-drawing.md](ga-drawing.md) | 1 |
@@ -19,7 +22,7 @@ One file per capability — each describes exactly one discrete thing the agent 
 
 ## Planned components (later expansion phases — capability docs authored when the phase is built)
 
-Expansion 2 (civil breadth): `plate-girder.md`, `slab-tbeam.md`, `pier-abutment.md`. Expansion 3 (mechanical): `structural-steel-member.md`, `rolling-stock-member.md`, `machine-element.md`. Each is a new `src/components/<type>/` plug-in against the same interface; see [roadmap.md](../roadmap.md#expansion-phases-platform-evolution--culvert-phases-13-above-are-done).
+Expansion 2 (civil breadth) is **built**: `plate-girder.md`, `slab-tbeam.md`, `pier-abutment.md` are authored above and their modules registered (breadth-first — full parity deepening is later work). Expansion 3 (mechanical, not yet built): `structural-steel-member.md`, `rolling-stock-member.md`, `machine-element.md` — capability docs authored when that phase lands. Each is a new `src/components/<type>/` plug-in against the same interface; see [roadmap.md](../roadmap.md#expansion-phases-platform-evolution--culvert-phases-13-above-are-done).
 
 ## How to Add a New Capability
 

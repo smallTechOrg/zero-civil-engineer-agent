@@ -4,24 +4,35 @@ These metadata-only entries make the picker/gallery show greyed "Coming soon"
 cards for the roadmap's future types (spec/roadmap.md, spec/ui.md). They must be
 registered and listed, but `is_available()` must be False for each so a POST is
 rejected (422) and the graph never dispatches to them.
+
+As of Expansion Phase 2 the three CIVIL breadth types (plate_girder, slab_tbeam,
+pier_abutment) are real, self-registering `available` modules — so only the
+three MECHANICAL types remain coming_soon here.
 """
 
 import pytest
 
 from components import registry
 
-# Registration order == gallery order: three civil previews, then three mechanical.
+# The three mechanical previews (Expansion Phase 3) — still coming_soon.
 EXPECTED = {
-    "plate_girder": "civil",
-    "slab_tbeam": "civil",
-    "pier_abutment": "civil",
     "structural_steel_member": "mechanical",
     "rolling_stock_member": "mechanical",
     "machine_element": "mechanical",
 }
 
+# The five available civil components after Expansion Phase 2 (culvert +
+# retaining wall + the three civil breadth modules built by sibling slices).
+EXPECTED_AVAILABLE = {
+    "box_culvert",
+    "rcc_cantilever_retaining_wall",
+    "plate_girder",
+    "slab_tbeam",
+    "pier_abutment",
+}
 
-def test_all_six_coming_soon_types_are_registered_and_listed():
+
+def test_the_three_mechanical_coming_soon_types_are_registered_and_listed():
     catalogue = {c["type_id"]: c for c in registry.list_components()}
     for type_id, domain in EXPECTED.items():
         assert type_id in catalogue, f"{type_id} missing from the component catalogue"
@@ -30,24 +41,40 @@ def test_all_six_coming_soon_types_are_registered_and_listed():
         assert row["domain"] == domain
 
 
-def test_available_and_coming_soon_split_populates_both_domain_groups():
+def test_civil_breadth_types_are_now_available_not_coming_soon():
+    # Expansion Phase 2: the three civil types flipped from coming_soon to
+    # available (real self-registering modules win over the removed stubs).
+    catalogue = {c["type_id"]: c for c in registry.list_components()}
+    for type_id in ("plate_girder", "slab_tbeam", "pier_abutment"):
+        assert type_id in catalogue, f"{type_id} missing from the component catalogue"
+        assert catalogue[type_id]["status"] == "available"
+        assert catalogue[type_id]["domain"] == "civil"
+        assert registry.is_available(type_id) is True
+
+
+def test_available_and_coming_soon_split_after_civil_breadth():
     catalogue = registry.list_components()
-    available = [c for c in catalogue if c["status"] == "available"]
-    coming_soon = [c for c in catalogue if c["status"] == "coming_soon"]
+    available = {c["type_id"] for c in catalogue if c["status"] == "available"}
+    coming_soon = {c["type_id"] for c in catalogue if c["status"] == "coming_soon"}
 
-    # The two available civil components + the six roadmap stubs.
-    assert len(available) >= 2
-    assert len(coming_soon) >= 6
+    # Exactly the five available civil components and the three mechanical stubs.
+    assert available == EXPECTED_AVAILABLE
+    assert coming_soon == set(EXPECTED)
 
-    civil = [c for c in coming_soon if c["domain"] == "civil"]
-    mechanical = [c for c in coming_soon if c["domain"] == "mechanical"]
-    # Both gallery groups (Civil / Mechanical) populate with greyed cards.
-    assert len(civil) >= 3
-    assert len(mechanical) >= 3
+    # Every remaining coming_soon card is in the Mechanical group.
+    mechanical = [
+        c for c in catalogue if c["status"] == "coming_soon" and c["domain"] == "mechanical"
+    ]
+    civil_coming_soon = [
+        c for c in catalogue if c["status"] == "coming_soon" and c["domain"] == "civil"
+    ]
+    assert len(mechanical) == 3
+    assert civil_coming_soon == [], "no civil card may still read as coming_soon"
 
 
 def test_available_cards_sort_ahead_of_coming_soon_in_gallery_order():
-    # Registration order (culvert → retaining wall → previews) is gallery order.
+    # Registration order (available components → mechanical previews) is gallery
+    # order: every available card precedes the first coming_soon preview.
     catalogue = registry.list_components()
     first_coming_soon = next(
         i for i, c in enumerate(catalogue) if c["status"] == "coming_soon"
@@ -99,7 +126,7 @@ def test_classify_metadata_marks_stubs_coming_soon_for_the_llm():
 def test_coming_soon_stub_reads_metadata_without_engineering_methods():
     # A metadata-only stub: no engineering method is required or invoked. The
     # defensive placeholder param/geometry models are present but never populated.
-    stub = registry.get("plate_girder")
+    stub = registry.get("machine_element")
     assert stub.param_model is not None
     assert stub.geometry_model is not None
     assert stub.critical_fields == []

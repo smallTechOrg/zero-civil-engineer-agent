@@ -43,7 +43,12 @@ interface ComparisonDescriptor {
   passWhen: 'lte' | 'gte'
 }
 
+// A flat, order-independent list. Each descriptor renders one row IFF its
+// valueKey and limitKey are both present in the summary — so descriptors for a
+// different component simply render nothing. New components need no new code
+// beyond (optionally) adding a descriptor here (spec/ui.md tab 0).
 const COMPARISON_DESCRIPTORS: ComparisonDescriptor[] = [
+  // Pier & abutment / retaining wall — foundation bearing vs SBC.
   {
     key: 'bearing',
     label: 'Max bearing pressure vs SBC',
@@ -52,6 +57,58 @@ const COMPARISON_DESCRIPTORS: ComparisonDescriptor[] = [
     limitLabel: 'SBC',
     unit: 'kN/m²',
     okKey: 'bearing_ok',
+    passWhen: 'lte',
+  },
+  // Steel plate girder — stress_summary (bending / shear / deflection).
+  {
+    key: 'bending',
+    label: 'Max bending stress vs permissible',
+    valueKey: 'max_bending_stress_mpa',
+    limitKey: 'permissible_bending_stress_mpa',
+    limitLabel: 'Permissible',
+    unit: 'MPa',
+    okKey: 'bending_ok',
+    passWhen: 'lte',
+  },
+  {
+    key: 'shear_stress',
+    label: 'Max shear stress vs permissible',
+    valueKey: 'max_shear_stress_mpa',
+    limitKey: 'permissible_shear_stress_mpa',
+    limitLabel: 'Permissible',
+    unit: 'MPa',
+    okKey: 'shear_ok',
+    passWhen: 'lte',
+  },
+  {
+    key: 'deflection',
+    label: 'Max deflection vs limit',
+    valueKey: 'max_deflection_mm',
+    limitKey: 'deflection_limit_mm',
+    limitLabel: 'Limit',
+    unit: 'mm',
+    okKey: 'deflection_ok',
+    passWhen: 'lte',
+  },
+  // RCC slab / T-beam — flexure_summary (required vs provided depth; shear).
+  {
+    key: 'flexure_depth',
+    label: 'Required vs provided depth',
+    valueKey: 'required_depth_mm',
+    limitKey: 'provided_depth_mm',
+    limitLabel: 'Provided',
+    unit: 'mm',
+    okKey: 'flexure_ok',
+    passWhen: 'lte',
+  },
+  {
+    key: 'slab_shear',
+    label: 'Shear stress vs permissible',
+    valueKey: 'shear_stress_mpa',
+    limitKey: 'permissible_shear_mpa',
+    limitLabel: 'Permissible',
+    unit: 'MPa',
+    okKey: 'shear_ok',
     passWhen: 'lte',
   },
 ]
@@ -239,7 +296,7 @@ export default function TypeSummaryPanel({
 
       {comparisonRows.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Bearing</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Capacity checks</p>
           {comparisonRows}
         </div>
       )}
