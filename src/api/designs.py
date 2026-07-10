@@ -227,7 +227,7 @@ def list_designs(
             prompt=row.prompt,
             status=row.status,
             verdict=row.verdict,
-            params_summary=_params_summary(_loads(row.params_json, None)),
+            params_summary=_params_summary(_loads(row.params_json, None), row.component_type),
             cost_usd=row.cost_usd,
             started_at=iso(row.started_at),
             duration_ms=row.duration_ms,
@@ -315,10 +315,20 @@ def _fmt_num(value: float) -> str:
     return text + "0" if text.endswith(".") else text
 
 
-def _params_summary(params: dict | None) -> str:
-    """e.g. '4.0 × 3.0 m, cushion 2.5 m, 25t-2008' — empty string when no params."""
+RETAINING_WALL_TYPE = "rcc_cantilever_retaining_wall"
+
+
+def _params_summary(params: dict | None, component_type: str | None = None) -> str:
+    """A one-line params summary for the library row.
+
+    Culvert (default): '4.0 × 3.0 m, cushion 2.5 m, 25t-2008'.
+    Retaining wall: '5.0 m retained, SBC 200 kN/m²'.
+    Empty string when there are no params (e.g. a failed/clarifying run).
+    """
     if not params:
         return ""
+    if component_type == RETAINING_WALL_TYPE:
+        return _retaining_wall_summary(params)
     try:
         span, height, cushion = (
             params["clear_span_m"],
@@ -330,3 +340,13 @@ def _params_summary(params: dict | None) -> str:
     summary = f"{_fmt_num(span)} × {_fmt_num(height)} m, cushion {_fmt_num(cushion)} m"
     loading = params.get("loading_standard")
     return f"{summary}, {loading}" if loading else summary
+
+
+def _retaining_wall_summary(params: dict) -> str:
+    """e.g. '5.0 m retained, SBC 200 kN/m²' — empty when the RW criticals are absent."""
+    try:
+        height = params["retained_height_m"]
+        sbc = params["safe_bearing_capacity_kn_m2"]
+    except KeyError:
+        return ""
+    return f"{_fmt_num(height)} m retained, SBC {_fmt_num(sbc)} kN/m²"

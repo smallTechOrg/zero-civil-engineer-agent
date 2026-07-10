@@ -15,3 +15,8 @@ try:  # pragma: no cover - the retaining_wall package is added by a sibling slic
     from components import retaining_wall  # noqa: F401
 except ImportError:
     pass
+
+# Roadmap ("coming soon") preview stubs — registered AFTER the available civil
+# components so the two available cards sort ahead of the greyed previews in the
+# gallery. Metadata-only; never dispatched to (see components/coming_soon.py).
+from components import coming_soon  # noqa: F401  (registers the 6 roadmap stubs)
