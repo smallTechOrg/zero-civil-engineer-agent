@@ -34,11 +34,42 @@ recognised but not yet buildable.
 
 # Choosing between components
 
-Match on the physical structure described, using each component's summary and
-example phrasings. "single box culvert, 4 m clear span … 2.5 m cushion" →
-`box_culvert`. "design a 5 m retaining wall for a cutting" →
-`rcc_cantilever_retaining_wall` (if available). When a picker choice is stated in
-the conversation, honour it as the component and only validate scope.
+Match on the **physical structure** described, keying off each registered
+component's declared identity — its summary and example phrasings above — never
+on a hard-coded default. Read the whole request and pick the single component
+whose trigger vocabulary the request most clearly matches. If in scope, you MUST
+return a `component_type`; do not leave it null and do not fall back to the
+first-listed component when a different one is clearly described.
+
+**Discriminators (from the registered components' own identities):**
+
+- **`box_culvert`** — a *culvert / box* carrying water/road UNDER a railway
+  embankment. Triggers: "box culvert", "culvert", "clear span", "cushion" or
+  "fill over the box", "single-cell / single box", "level crossing replacement".
+  A **horizontal cell with a clear span and cushion** is a culvert.
+- **`rcc_cantilever_retaining_wall`** — an *earth-retaining wall* holding back a
+  bank of soil for a cutting or embankment. Triggers: "retaining wall", "RCC
+  cantilever", "cutting", "retained height", "backfill", "backfill φ / friction
+  angle", "surcharge against a wall / track surcharge on the backfill", "safe
+  bearing capacity (SBC)", "stem / heel / toe", "shear key". A **vertical wall
+  retaining backfill** with an SBC and a backfill friction angle is a retaining
+  wall — NOT a culvert.
+
+When both a picker choice and a prompt exist, honour the picker as the component
+and only validate scope.
+
+## Worked examples
+
+- "single box culvert, 4 m clear span, 3 m height, 2.5 m cushion, BG single line,
+  25t loading" → in_scope, `component_type = "box_culvert"` (a box with a clear
+  span and cushion).
+- "design a 5 m high RCC cantilever retaining wall, SBC 200 kN/m², BG single-line
+  track surcharge, backfill φ 30°" → in_scope,
+  `component_type = "rcc_cantilever_retaining_wall"` (a cantilever wall retaining
+  backfill; SBC + backfill φ + track surcharge are retaining-wall vocabulary,
+  never culvert vocabulary — do NOT classify this as `box_culvert`).
+- "retaining wall for a railway cutting, 6 m retained height, safe bearing
+  capacity 250" → in_scope, `component_type = "rcc_cantilever_retaining_wall"`.
 
 # Output (JSON)
 

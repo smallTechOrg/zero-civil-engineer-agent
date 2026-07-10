@@ -15,6 +15,13 @@ CULVERT_PROMPT = (
     "BG single line, 25t loading"
 )
 
+# The canonical retaining-wall prompt (retaining-wall.md SC) — SBC + backfill φ +
+# track surcharge are unambiguous retaining-wall vocabulary, NOT culvert.
+RETAINING_WALL_PROMPT = (
+    "design a 5 m high RCC cantilever retaining wall, SBC 200 kN/m2, "
+    "BG single-line track surcharge, backfill phi 30 degrees"
+)
+
 
 def test_culvert_prompt_auto_detects_box_culvert_and_snapshot_exposes_it(
     require_gemini, drawing_ready, make_session, run_and_wait, get_run,
@@ -47,3 +54,23 @@ def test_culvert_prompt_auto_detects_box_culvert_and_snapshot_exposes_it(
     assert snapshot["type_summary"]["verdict"] in {
         "recommended_for_approval", "return_for_revision",
     }
+
+
+def test_retaining_wall_prompt_auto_detects_rcc_cantilever_retaining_wall(
+    require_gemini, drawing_ready, make_session, run_and_wait, get_run,
+):
+    """The canonical RW prompt must classify rcc_cantilever_retaining_wall — the
+    silent box_culvert misclassification regression (understand discriminator)."""
+    session_id = make_session()
+
+    run_id, events = run_and_wait(session_id, RETAINING_WALL_PROMPT)
+
+    assert events[-1]["data"]["status"] == "completed"
+
+    from db.models import DesignRunRow
+    from db.session import create_db_session
+
+    with create_db_session() as session:
+        design = session.get(DesignRunRow, run_id)
+        # The heart of the fix: NOT silently classified/defaulted to box_culvert.
+        assert design.component_type == "rcc_cantilever_retaining_wall"

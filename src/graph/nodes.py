@@ -275,7 +275,32 @@ def understand(state: AgentState) -> dict:
                 "steps": tracker.steps,
             }
 
-        component_type = requested or parsed.component_type or _DEFAULT_COMPONENT
+        # An explicit picker choice always wins. Otherwise the classifier MUST
+        # resolve the component — a null/unknown classification for an in-scope
+        # request is NOT silently defaulted to the culvert (that masks a
+        # classification failure as a culvert run). Per component-registry.md the
+        # classify call is "1 retry, then fatal (transparent error)": we fail
+        # transparently, naming the available components, rather than guessing.
+        component_type = requested or parsed.component_type
+        if not component_type:
+            available = ", ".join(
+                meta["type_id"]
+                for meta in _registry().classify_metadata()
+                if meta["status"] == "available"
+            )
+            message = (
+                "The request is in scope but the platform could not confidently "
+                "determine which component to design. Please name the component "
+                f"explicitly — the available components are: {available}."
+            )
+            tracker.mark(
+                "Understand", "failed", detail="Unresolved component classification"
+            )
+            return {
+                "steps": tracker.steps,
+                "token_usage": token_usage,
+                "error": message,
+            }
         if not _registry().is_available(component_type):
             # Defensive: an unavailable/unknown classification is out of scope, not a crash.
             scope_message = (
@@ -511,7 +536,7 @@ def check(state: AgentState) -> dict:
 
         failing = [row for row in output.checks if row.status != "PASS"]
         if failing:
-            members = _failing_members(failing)
+            members = _failing_members(module, failing)
             _narrate(
                 state,
                 f"{len(failing)} of {len(output.checks)} checks FAIL ({members}) — "
@@ -532,14 +557,22 @@ def check(state: AgentState) -> dict:
         return {"steps": tracker.steps, "error": f"Member checks (check node) failed: {exc}"}
 
 
-def _failing_members(failing: list) -> str:
-    """Human-readable member list for the FAIL narration (culvert labels when available)."""
-    try:
-        from engine.checks import MEMBER_LABELS
-    except Exception:  # pragma: no cover - defensive for non-culvert components
-        MEMBER_LABELS = {}
+def _failing_members(module, failing: list) -> str:
+    """Human-readable member list for the FAIL narration.
+
+    Component-agnostic: member labels come from the dispatched module
+    (`module.member_labels`), NOT from a direct `engine.checks` import — a shared
+    node must never import a component-specific engine (component-registry SC#6).
+    A module that declares no labels falls back to the raw member key.
+    """
+    labels = getattr(module, "member_labels", {}) or {}
     return ", ".join(
-        sorted({MEMBER_LABELS.get(getattr(row, "member", ""), getattr(row, "member", "")) for row in failing})
+        sorted(
+            {
+                labels.get(getattr(row, "member", ""), getattr(row, "member", ""))
+                for row in failing
+            }
+        )
     )
 
 
@@ -726,10 +759,19 @@ def finalize(state: AgentState) -> dict:
     check_rows = [
         {key: row[key] for key in _CHECK_ROW_KEYS} for row in (state.get("checks") or [])
     ]
+    # An out-of-scope run designs NOTHING — it must not carry a *designed*
+    # component_type (architecture.md). The `component_type` column is
+    # non-nullable with a `box_culvert` default (the schema's neutral "no
+    # designed component" sentinel; migrations are out of scope here), so an
+    # out-of-scope run resets to that sentinel rather than persisting the
+    # picker-seeded type it never designed. Only a completed design persists its
+    # own component_type.
     persistence.finish_run(
         state["run_id"],
         status=status,
-        component_type=_component_type(state),
+        component_type=(
+            _component_type(state) if status == "completed" else _DEFAULT_COMPONENT
+        ),
         plan_text=state.get("plan_text") or None,
         scope_message=state.get("scope_message"),
         params=state.get("params"),
