@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     database_url: str = Field(default="sqlite:///./data/agent.db")
     log_level: str = Field(default="INFO")
 
-    # Server bind port for `uv run python -m src` (host stays 127.0.0.1).
+    # Server bind port for `uv run python -m src`.
     port: int = Field(default=8001)
 
     # Artefact files (DXF/SVG/JSON/...) live under <artifacts_dir>/<run_id>/.
