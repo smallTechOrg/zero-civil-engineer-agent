@@ -65,6 +65,15 @@ class RetainingWallComponent:
     # Extra (not in the minimal Protocol): the analysis rehydration model.
     analysis_model = RetainingWallAnalysis
 
+    @property
+    def member_labels(self) -> dict[str, str]:
+        """Human-readable member names, exposed via the interface so the shared
+        `check` node narrates failing members through dispatch, not a direct
+        component-engine import (component-registry SC#6)."""
+        from components.retaining_wall.checks import MEMBER_LABELS
+
+        return MEMBER_LABELS
+
     # ---- intake ----
     def extraction_schema(self) -> type:
         return RWExtractionResult

@@ -58,6 +58,15 @@ class BoxCulvertComponent:
     # Extra (not in the minimal Protocol): the analysis rehydration model.
     analysis_model = AnalysisResult
 
+    @property
+    def member_labels(self) -> dict[str, str]:
+        """Human-readable member names, exposed via the interface so the shared
+        `check` node narrates failing members WITHOUT importing `engine.checks`
+        directly (component-registry SC#6)."""
+        from engine.checks import MEMBER_LABELS
+
+        return MEMBER_LABELS
+
     # ---- intake ----
     def extraction_schema(self) -> type:
         return ExtractionResult
