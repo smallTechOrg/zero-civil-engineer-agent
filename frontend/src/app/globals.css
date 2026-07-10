@@ -1,0 +1,11 @@
+@import "tailwindcss";
+@source "../";
+
+/* The GA drawing SVG is inlined (fetched from the artefact endpoint) so the
+   pan/zoom wrapper manipulates real SVG DOM; scale it to its host. */
+.drawing-svg-host svg {
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+  background: #ffffff;
+}

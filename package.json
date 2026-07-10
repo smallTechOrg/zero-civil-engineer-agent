@@ -1,0 +1,11 @@
+{
+  "name": "ir-box-culvert-agent",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "e2e": "playwright test tests/e2e --reporter=line"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  }
+}
