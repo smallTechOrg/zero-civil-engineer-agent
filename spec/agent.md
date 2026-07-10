@@ -1,6 +1,8 @@
 # Agent
 
-The LangGraph pipeline for one design run: NL prompt → scoped, typed parameters → deterministic IRS design → artefacts → automatic proof-check. Extends the skeleton graph (`src/graph/`) in place, replacing the `transform_text` capability slot.
+The LangGraph pipeline for one design run: NL prompt → scoped, **component-classified**, typed parameters → deterministic design → artefacts → automatic proof-check. Extends the skeleton graph (`src/graph/`) in place, replacing the `transform_text` capability slot.
+
+**The graph shape is fixed and component-agnostic.** From the Component-Registry expansion on, every engineering node **dispatches** to the selected Component Module via `registry.get(state["component_type"])` (see [architecture.md](architecture.md#component-registry--component-interface-the-platform-spine)) rather than importing culvert code directly. `understand` classifies the component type; `extract` uses the component's extraction schema; `analyse`/`check`/`draw`/`model3d`/`review` call the component's interface methods. Adding a component type changes **no node** — only the registry.
 
 ---
 
@@ -60,8 +62,10 @@ class AgentState(TypedDict, total=False):
 
     # Input
     user_prompt: str                 # this turn's NL request
+    component_type: str              # registry type_id — set by `understand` (classify) or overridden by the API picker
+    requested_component: str | None  # explicit picker choice from the API (overrides auto-detect when set)
     messages: list[dict]             # session history: [{role, content}] incl. prior clarification Q/A
-    prior_params: dict | None        # accepted CulvertParams from the session's last completed run
+    prior_params: dict | None        # accepted params from the session's last completed run (of the same component_type)
     preset_values: dict              # defaults preset applied to this run
 
     # Understand
@@ -84,6 +88,7 @@ class AgentState(TypedDict, total=False):
     fe_comparison: dict | None       # FE-vs-closed-form diff (Phase 2)
     checklist: list[dict]            # 12-item proof-check results (Phase 2)
     verdict: str | None              # "recommended_for_approval" | "return_for_revision" (Phase 2)
+    type_summary: dict | None        # component-specific summary from module.type_summary (RW → stability; persisted to type_summary_json)
     artefacts: list[dict]            # [{kind, filename}] as written
     suggestions: list[str]           # 2–3 refinement suggestions (Phase 3)
 
@@ -104,20 +109,22 @@ class AgentState(TypedDict, total=False):
 UI step-tracker mapping (fixed six steps): **Understand**=`understand` · **Extract**=`extract`/`clarify` · **Analyse**=`analyse` · **Check**=`check` · **Draw**=`draw`+`model3d` · **Review**=`review`. Every node publishes `step`/`narration` events to the progress bus on entry/exit (see [api.md](api.md#sse-event-stream)).
 
 ### `understand`
-**Reads:** `user_prompt`, `messages`. **Writes:** `in_scope`, `scope_message`, `plan_text`, `token_usage`. **LLM:** yes — `understand.md`; JSON `{in_scope, scope_message?, plan}`.
-**Behaviour:** Scope gate + plan. In scope: designing or refining a **single-cell RCC box culvert** (incl. answering a pending clarification). Anything else ("design a suspension bridge") → `in_scope=false` with a graceful one-paragraph scope statement naming what the demonstrator does cover; routes to `finalize` with status `out_of_scope`. In scope → emit the plain-language design plan as narration events.
+**Reads:** `user_prompt`, `messages`, `requested_component`. **Writes:** `in_scope`, `component_type`, `scope_message`, `plan_text`, `token_usage`. **LLM:** yes — `understand.md`; JSON `{in_scope, component_type, scope_message?, plan}`.
+**Behaviour:** Scope gate + **component classification** + plan. The prompt is built from `registry.list_components()` metadata (each available type's `display_name`, `summary`, `scope_examples`). In scope = the request maps to a registered `status="available"` component (designing/refining, incl. answering a pending clarification). If `requested_component` (picker) is set, it is used as `component_type` and the LLM only validates scope + produces a type-aware plan. A recognised-but-`coming_soon` type, or anything non-railway/non-engineering ("design a suspension bridge") → `in_scope=false` with a graceful one-paragraph scope statement naming what the platform currently covers; routes to `finalize` with status `out_of_scope`. In scope → set `component_type` and emit the plain-language design plan as narration events.
 
 ### `extract`
 **Reads:** `user_prompt`, `messages`, `prior_params`, `preset_values`. **Writes:** `params`, `missing_critical`, `warnings`, `token_usage`. **LLM:** yes — structured output against `ExtractionResult`.
-**Behaviour:** Extracts typed parameters from this turn and **merges**: this turn's values override `prior_params` (refinement: "increase fill to 4 m" changes only `cushion_m`), which override preset defaults. Validates via `CulvertParams` (ranges in [data.md](data.md#culvertparams--the-typed-parameter-model)). Missing critical fields (`clear_span_m`, `clear_height_m`, `cushion_m`) → `missing_critical` (never guessed, never defaulted). Unusual values → `warnings` (flagged, run proceeds). Deterministic post-validation in Python — the LLM extracts, Pydantic decides validity.
+**Behaviour:** Dispatches to `module = registry.get(state["component_type"])`. Extracts typed parameters using `module.extraction_schema()` (LLM structured output) and validates against `module.param_model`; merges this turn's values over `prior_params` (refinement) over preset defaults. Missing `module.critical_fields` → `missing_critical` (never guessed, never defaulted). `module.unusual_value_warnings(params)` → `warnings`. For the culvert the schema is `CulvertParams` and critical = span/height/cushion (ranges in [data.md](data.md#culvertparams--the-typed-parameter-model)); for the retaining wall it is `RetainingWallParams` (see [capabilities/retaining-wall.md](capabilities/retaining-wall.md)). Deterministic post-validation in Python — the LLM extracts, Pydantic decides validity.
 
 ### `clarify`
 **Reads:** `missing_critical`, `params`. **Writes:** `clarification_question`, `status="needs_input"`. **LLM:** no — templated question per missing field (deterministic = demo-safe).
-**Behaviour:** Picks the single most critical missing parameter (priority: span → height → cushion) and phrases ONE pointed question (e.g. "What is the clear span of the box? Standard RDSO single-cell spans run 1 m to 6 m."). Publishes a `clarification` event and **ends the run**. The answer arrives as the next session turn; `extract` merges it via `messages`/`prior_params`. Exactly one question per run — the merged next turn either completes the params or the new run asks the next-priority question.
+**Behaviour:** Picks the single most critical missing parameter (component's `critical_fields` order) and phrases ONE pointed question via `module.clarify_question(field)` (culvert: span → height → cushion; retaining wall: retained height → SBC → backfill φ). Publishes a `clarification` event and **ends the run**. The answer arrives as the next session turn; `extract` merges it via `messages`/`prior_params`. Exactly one question per run — the merged next turn either completes the params or the new run asks the next-priority question.
+
+> **Dispatch (all deterministic pipeline nodes):** `analyse`, `check`, `draw`, `model3d`, `review` each resolve `module = registry.get(state["component_type"])` and call the corresponding interface method (`module.size`/`analyse`/`run_checks`/`compose_calc_sheet`/`draw`/`model3d`/`proof_check`/`type_summary`). The node bodies are component-agnostic; geometry/analysis/checks are the module's own types, carried through state as dicts and rehydrated via `module.geometry_model` etc. The descriptions below use the culvert as the worked example; the retaining wall follows the same node flow with earth-pressure/stability semantics (see [capabilities/retaining-wall.md](capabilities/retaining-wall.md)).
 
 ### `analyse`
-**Reads:** `params`. **Writes:** `geometry`, `assumptions`, `analysis`, trail steps. **LLM:** no.
-**Behaviour:** Deterministic IRS engine. **Phase 1: sizing only** — geometry + member thicknesses sufficient to drive the GA drawing (`engine.size_culvert`). **Phase 2: full** — load cases (DL, SIDL, EUDL+CDA with cushion dispersal, earth pressure, LL surcharge, box empty/full) and rigid-frame analysis (`engine.analyse_frame`). Every number recorded as a trail step (formula, inputs, value, clause/source citation).
+**Reads:** `params`, `component_type`. **Writes:** `geometry`, `assumptions`, `analysis`, trail steps. **LLM:** no.
+**Behaviour:** Deterministic engine via `module.size` then `module.analyse`. **Culvert Phase 1: sizing only** — geometry + member thicknesses sufficient to drive the GA drawing (`engine.size_culvert`). **Phase 2: full** — load cases (DL, SIDL, EUDL+CDA with cushion dispersal, earth pressure, LL surcharge, box empty/full) and rigid-frame analysis (`engine.analyse_frame`). Every number recorded as a trail step (formula, inputs, value, clause/source citation).
 
 ### `check`
 **Reads:** `analysis`, `geometry`, `params`. **Writes:** `checks`, calc-sheet artefact. **LLM:** no.
@@ -133,11 +140,11 @@ UI step-tracker mapping (fixed six steps): **Understand**=`understand` · **Extr
 
 ### `review`
 **Reads:** run record, `checks`, `geometry`, `params`, ga.dxf path. **Writes:** `fe_comparison`, `checklist`, `verdict`, memo artefact, `token_usage`. **LLM:** yes — memo narration only (`memo.md`).
-**Behaviour:** *Phase 1: labelled stub.* Phase 2: automatic proof-check after every design — `fe.cross_check` (anaStruct re-solve, diff, BMD/SFD) then `proofcheck.run_checklist` (12 deterministic items incl. DXF read-back and FE-agreement), then one Gemini call narrates the severity-graded memo (`proof_memo.md`) from the deterministic results. A narration that fails the deterministic grounding validator is discarded (warning event) and the memo composes fully deterministically; only LLM transport failure (after 1 retry) is fatal. Verdict is computed by rule (any major non-conformity → `return_for_revision`), never by the LLM.
+**Behaviour:** *Phase 1: labelled stub.* Phase 2: automatic proof-check after every design via `module.proof_check` — for the culvert `fe.cross_check` (anaStruct re-solve, diff, BMD/SFD) then `proofcheck.run_checklist` (12 deterministic items incl. DXF read-back and FE-agreement); for the retaining wall recomputed stability factors (+ anaStruct where a stem-as-cantilever frame applies) then its own checklist. One Gemini call narrates the severity-graded memo using `module.memo_prompt()` (`memo.md` for culvert, `rw_memo.md` for the retaining wall) from the deterministic results. A narration that fails the deterministic grounding validator is discarded (warning event) and the memo composes fully deterministically; only LLM transport failure (after 1 retry) is fatal. Verdict is computed by rule (any major non-conformity → `return_for_revision`), never by the LLM.
 
 ### `finalize`
 **Reads:** everything. **Writes:** `status="completed"`, `suggestions`, DB persistence. **LLM:** Phase 3 only — 2–3 refinement suggestions.
-**Behaviour:** Persists run totals (params, assumptions, checks, verdict, tokens, cost, duration, steps) to `design_runs`; publishes the final `tokens` and `done` events. (Every LLM-calling node also publishes a running `tokens` event right after its call, so the header cost display is live throughout the run.) Phase 3 adds one Gemini call for suggestions (non-fatal on failure).
+**Behaviour:** Computes `module.type_summary(...)` and persists run totals (component_type, params, assumptions, checks, verdict, type_summary, tokens, cost, duration, steps) to `design_runs`; publishes the final `tokens` and `done` events. (Every LLM-calling node also publishes a running `tokens` event right after its call, so the header cost display is live throughout the run.) Phase 3 adds one Gemini call for suggestions (non-fatal on failure).
 
 ### `handle_error`
 **Reads:** `error`, `run_id`. **Writes:** `status="failed"`, DB update.
