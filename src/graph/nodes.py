@@ -1,16 +1,18 @@
-"""The ten pipeline nodes per spec/agent.md.
+"""The ten pipeline nodes per spec/agent.md — component-agnostic dispatch.
 
-LLM nodes (understand, extract, the review memo narration, and the finalize
+From the Component-Registry expansion on, every engineering node dispatches to
+the selected Component Module via `registry.get(state["component_type"])`
+instead of importing a component-specific engine directly. `understand`
+classifies the component type (or honours the picker's `requested_component`);
+`extract` uses the selected component's extraction schema and critical fields;
+`analyse`/`check`/`draw`/`model3d`/`review` call the module's interface methods.
+Adding a component type changes NO node — only the registry.
+
+LLM nodes (understand, extract, the review memo narration, the finalize
 suggestions call) orchestrate and narrate; every engineering computation is
-deterministic. Phase 2: analyse runs the full IRS engine (sizing + load cases
-+ frame analysis), check runs the IRS CBC member checks and streams the calc
-sheet, review runs the automatic proof-check (FE cross-check, 12-item
-checklist, grounded memo). Phase 3: model3d builds the real GLB + STEP solid
-(NON-FATAL — any failure is a warning and the 2D artefacts stand) and finalize
-adds ONE Gemini call for 2–3 refinement suggestions (also non-fatal: swallowed,
-log only). Every other node body is wrapped — exceptions set state["error"]
-and route to handle_error (clarify/finalize/handle_error propagate to the
-runner's catch-all).
+deterministic. Every node body is wrapped — exceptions set state["error"] and
+route to handle_error (clarify/finalize/handle_error propagate to the runner's
+catch-all).
 """
 
 import functools
@@ -20,26 +22,10 @@ from pathlib import Path
 from pydantic import BaseModel, Field, ValidationError
 
 from config.settings import get_settings
-from domain.culvert import (
-    AnalysisResult,
-    Assumption,
-    BoxGeometry,
-    CalcStep,
-    CulvertParams,
-    unusual_value_warnings,
-)
-from engine import size_culvert
-from engine.analysis import analyse_frame
-from engine.calcsheet import compose_calc_sheet
-from engine.checks import MEMBER_LABELS, CheckResult, run_member_checks
+from domain.culvert import Assumption
 from graph import persistence
 from graph.accounting import compute_cost_usd, run_totals
-from graph.extraction import (
-    ExtractionResult,
-    merge_params,
-    select_clarification,
-    validation_error_message,
-)
+from graph.extraction import merge_params, validation_error_message
 from graph.state import AgentState
 from graph.steps import StepTracker, duration_ms
 from graph.suggestions import SuggestionsResult, run_summary, sanitize_suggestions
@@ -48,6 +34,8 @@ from observability.events import get_logger
 from observability.progress import publish
 
 _PROMPT_DIR = Path(__file__).resolve().parent.parent / "prompts"
+
+_DEFAULT_COMPONENT = "box_culvert"
 
 _ARTIFACT_MIME = {
     "ga_dxf": "image/vnd.dxf",
@@ -65,22 +53,47 @@ _ARTIFACT_ORDER = ("ga_dxf", "ga_svg")
 # The spec/api.md `checks[]` row shape — exactly these keys are persisted.
 _CHECK_ROW_KEYS = ("clause", "requirement", "computed", "limit", "status")
 
+VERDICT_APPROVAL = "recommended_for_approval"
+
 
 class UnderstandResult(BaseModel):
-    """Structured output of the scope gate + plan (understand.md)."""
+    """Structured output of the scope gate + component classification + plan."""
 
     in_scope: bool = Field(
-        description="True only for designing/refining a single-cell RCC box culvert "
-        "or answering a pending clarification about one."
+        description="True only for designing/refining a component the platform currently "
+        "supports (status='available'), or answering a pending clarification about one."
+    )
+    component_type: str | None = Field(
+        default=None,
+        description="The registry type_id of the component this request maps to — set "
+        "ONLY when in_scope is true; must be one of the available type_ids listed in the "
+        "system prompt.",
     )
     scope_message: str | None = Field(
         default=None,
-        description="Graceful one-paragraph scope statement — set ONLY when in_scope is false.",
+        description="Graceful one-paragraph scope statement — set ONLY when in_scope is "
+        "false (out of scope, or a recognised-but-coming_soon component).",
     )
     plan: str = Field(
         default="",
         description="Plain-language design plan (2–4 short sentences) — set ONLY when in_scope is true.",
     )
+
+
+def _registry():
+    """Lazy registry accessor — importing `components` populates it at first use."""
+    from components import registry
+
+    return registry
+
+
+def _component_type(state: AgentState) -> str:
+    return state.get("component_type") or _DEFAULT_COMPONENT
+
+
+def _module(state: AgentState):
+    """The Component Module for this run — dispatch target for every engineering node."""
+    return _registry().get(_component_type(state))
 
 
 def _load_prompt(name: str) -> str:
@@ -120,6 +133,31 @@ def _conversation(state: AgentState) -> str:
         lines.append("")
     lines.append(f"Current request: {state['user_prompt']}")
     return "\n".join(lines)
+
+
+def _components_catalogue_text() -> str:
+    """The available/coming-soon component catalogue the LLM classifies against."""
+    lines: list[str] = []
+    for meta in _registry().classify_metadata():
+        status = "AVAILABLE" if meta["status"] == "available" else "COMING SOON"
+        lines.append(f"- type_id: {meta['type_id']}  [{status}]")
+        lines.append(f"  name: {meta['display_name']}")
+        lines.append(f"  summary: {meta['summary']}")
+        if meta["scope_examples"]:
+            lines.append("  example phrasings:")
+            lines.extend(f"    * {ex}" for ex in meta["scope_examples"])
+    return "\n".join(lines)
+
+
+def understand_system_prompt() -> str:
+    """`understand.md` with the live registry catalogue rendered into {{COMPONENTS}}.
+
+    The node and the LLM-provider tests both build the scope/classification prompt
+    through this one function, so they never drift.
+    """
+    return _load_prompt("understand.md").replace(
+        "{{COMPONENTS}}", _components_catalogue_text()
+    )
 
 
 def _record_llm_call(state: AgentState, node: str, result: LLMResult) -> list[dict]:
@@ -196,21 +234,36 @@ def _emit_artifact(
 
 @_node
 def understand(state: AgentState) -> dict:
+    """Scope gate + component classification + plan.
+
+    An explicit picker choice (`requested_component`) forces `component_type`;
+    the LLM then only validates scope + produces a type-aware plan. Otherwise the
+    LLM classifies the prompt against the registered `available` components. A
+    recognised-but-`coming_soon` type or a non-railway/non-engineering request →
+    `in_scope=false` with a graceful scope statement.
+    """
     tracker = StepTracker(state)
     tracker.mark("Understand", "active", detail="Reading the request")
+    requested = state.get("requested_component")
     try:
+        system = understand_system_prompt()
+        conversation = _conversation(state)
+        if requested:
+            conversation = (
+                f"{conversation}\n\n"
+                f"The user explicitly selected the component type '{requested}' from the "
+                "picker. Treat that as the component_type (do not re-classify); still "
+                "validate that the request is in scope and produce a type-aware plan."
+            )
         result = LLMClient().generate(
-            _conversation(state),
-            system=_load_prompt("understand.md"),
-            schema=UnderstandResult,
-            temperature=0.2,
+            conversation, system=system, schema=UnderstandResult, temperature=0.2
         )
         token_usage = _record_llm_call(state, "understand", result)
         parsed: UnderstandResult = result.parsed
         if not parsed.in_scope:
             scope_message = parsed.scope_message or (
-                "This demonstrator designs and proof-checks single-cell RCC box "
-                "culverts to IRS codes — that request is outside its scope."
+                "This platform designs and proof-checks Indian Railways structural "
+                "components to IRS codes — that request is outside its current scope."
             )
             _narrate(state, scope_message)
             tracker.mark("Understand", "done", detail="Out of scope")
@@ -221,10 +274,29 @@ def understand(state: AgentState) -> dict:
                 "token_usage": token_usage,
                 "steps": tracker.steps,
             }
+
+        component_type = requested or parsed.component_type or _DEFAULT_COMPONENT
+        if not _registry().is_available(component_type):
+            # Defensive: an unavailable/unknown classification is out of scope, not a crash.
+            scope_message = (
+                f"'{component_type}' is not a component this platform currently offers. "
+                "It designs and proof-checks the available components listed in the studio."
+            )
+            _narrate(state, scope_message)
+            tracker.mark("Understand", "done", detail="Out of scope")
+            return {
+                "in_scope": False,
+                "scope_message": scope_message,
+                "plan_text": "",
+                "token_usage": token_usage,
+                "steps": tracker.steps,
+            }
+
         _narrate(state, parsed.plan)
         tracker.mark("Understand", "done")
         return {
             "in_scope": True,
+            "component_type": component_type,
             "scope_message": None,
             "plan_text": parsed.plan,
             "token_usage": token_usage,
@@ -243,16 +315,22 @@ def extract(state: AgentState) -> dict:
     tracker = StepTracker(state)
     tracker.mark("Extract", "active", detail="Extracting design parameters")
     try:
+        module = _module(state)
+        param_model = module.param_model
         result = LLMClient().generate(
             _conversation(state),
             system=_load_prompt("extract.md"),
-            schema=ExtractionResult,
+            schema=module.extraction_schema(),
             temperature=0.0,
         )
         token_usage = _record_llm_call(state, "extract", result)
         extracted = {k: v for k, v in result.parsed.model_dump().items() if v is not None}
         outcome = merge_params(
-            extracted, state.get("prior_params"), state.get("preset_values") or {}
+            extracted,
+            state.get("prior_params"),
+            state.get("preset_values") or {},
+            known_fields=frozenset(param_model.model_fields),
+            critical_fields=tuple(module.critical_fields),
         )
         if outcome.missing_critical:
             # Clarify (still the Extract UI step) publishes the question and closes the run.
@@ -263,7 +341,7 @@ def extract(state: AgentState) -> dict:
                 "steps": tracker.steps,
             }
         try:
-            params = CulvertParams(**outcome.merged)
+            params = param_model(**outcome.merged)
         except ValidationError as exc:
             message = validation_error_message(exc)
             tracker.mark("Extract", "failed", detail=message)
@@ -272,7 +350,7 @@ def extract(state: AgentState) -> dict:
                 "steps": tracker.steps,
                 "error": f"Parameter validation failed: {message}",
             }
-        warnings = unusual_value_warnings(params)
+        warnings = module.unusual_value_warnings(params)
         for warning in warnings:
             publish(state["run_id"], "warning", {"message": warning})
         preset_assumptions = [
@@ -284,14 +362,7 @@ def extract(state: AgentState) -> dict:
             ).model_dump()
             for field in outcome.preset_fields
         ]
-        tracker.mark(
-            "Extract",
-            "done",
-            detail=(
-                f"{params.clear_span_m:g} × {params.clear_height_m:g} m box, "
-                f"cushion {params.cushion_m:g} m"
-            ),
-        )
+        tracker.mark("Extract", "done", detail=_extract_detail(params))
         return {
             "params": params.model_dump(mode="json"),
             "missing_critical": [],
@@ -308,11 +379,26 @@ def extract(state: AgentState) -> dict:
         }
 
 
+def _extract_detail(params: BaseModel) -> str:
+    """A short, component-neutral 'done' detail from the critical fields."""
+    data = params.model_dump()
+    # Culvert-friendly summary when the classic fields are present; generic otherwise.
+    if {"clear_span_m", "clear_height_m", "cushion_m"} <= set(data):
+        return (
+            f"{data['clear_span_m']:g} × {data['clear_height_m']:g} m box, "
+            f"cushion {data['cushion_m']:g} m"
+        )
+    return "Parameters extracted"
+
+
 @_node
 def clarify(state: AgentState) -> dict:
     """Deterministic: ONE pointed question, run ends at needs_input (terminal)."""
     tracker = StepTracker(state)
-    field, question = select_clarification(state["missing_critical"])
+    module = _module(state)
+    missing = state["missing_critical"]
+    field = next((f for f in module.critical_fields if f in missing), missing[0])
+    question = module.clarify_question(field)
     publish(
         state["run_id"], "clarification", {"question": question, "missing_param": field}
     )
@@ -323,6 +409,7 @@ def clarify(state: AgentState) -> dict:
     persistence.finish_run(
         state["run_id"],
         status="needs_input",
+        component_type=_component_type(state),
         clarification_question=question,
         plan_text=state.get("plan_text"),
         steps=tracker.steps,
@@ -354,86 +441,68 @@ def clarify(state: AgentState) -> dict:
 
 @_node
 def analyse(state: AgentState) -> dict:
-    """Deterministic IRS engine: sizing, then load cases + rigid-frame analysis."""
+    """Deterministic engine via the module: sizing, then analysis."""
     tracker = StepTracker(state)
-    tracker.mark("Analyse", "active", detail="Running the IRS engine")
+    tracker.mark("Analyse", "active", detail="Running the deterministic engine")
     try:
-        params = CulvertParams(**state["params"])
-        _narrate(state, f"Sizing members for {params.clear_span_m:g} m span…")
-        sizing = size_culvert(params)
+        module = _module(state)
+        _narrate(state, f"Sizing the {module.display_name.lower()}…")
+        sizing = module.size(state["params"])
         for warning in sizing.warnings:
             publish(state["run_id"], "warning", {"message": warning})
         geometry = sizing.geometry
 
-        analysis = analyse_frame(params, geometry)
-        _narrate(
-            state,
-            f"Analysing {len(analysis.load_cases)} load cases across "
-            f"{len(analysis.combinations)} combinations…",
-        )
-        tracker.mark(
-            "Analyse",
-            "done",
-            detail=(
-                f"{len(analysis.load_cases)} load cases, "
-                f"{len(analysis.combinations)} combinations; top slab "
-                f"{geometry.top_slab_thickness_mm:g} mm, walls "
-                f"{geometry.wall_thickness_mm:g} mm"
-            ),
-        )
+        analysis_out = module.analyse(state["params"], geometry)
+        analysis = analysis_out.analysis
+        _narrate(state, "Running the deterministic engineering analysis…")
+        tracker.mark("Analyse", "done", detail="Sizing + analysis complete")
         return {
             "geometry": geometry.model_dump(),
             "analysis": analysis.model_dump(),
             "assumptions": list(state.get("assumptions") or [])
             + [a.model_dump() for a in sizing.assumptions]
-            + [a.model_dump() for a in analysis.assumptions],
+            + [a.model_dump() for a in analysis_out.assumptions],
             # Engine-ordered trail segments retained for the calc-sheet composer.
             "trail_segments": [
                 [step.model_dump() for step in sizing.trail],
-                [step.model_dump() for step in analysis.trail],
+                [step.model_dump() for step in analysis_out.trail],
             ],
             "warnings": list(state.get("warnings") or []) + sizing.warnings,
             "steps": tracker.steps,
         }
     except Exception as exc:
         tracker.mark("Analyse", "failed", detail=str(exc))
-        return {"steps": tracker.steps, "error": f"IRS engine analysis failed: {exc}"}
+        return {"steps": tracker.steps, "error": f"Engine analysis failed: {exc}"}
 
 
 @_node
 def check(state: AgentState) -> dict:
-    """IRS CBC member checks + the clause-cited calc sheet (streams immediately).
+    """Code-checks + the clause-cited calc sheet (streams immediately).
 
     FAIL rows never fail the run — they flow to the proof-check, which grades
     them (the deliberate under-design demo case depends on this).
     """
     tracker = StepTracker(state)
-    tracker.mark("Check", "active", detail="IRS CBC member checks")
+    tracker.mark("Check", "active", detail="Running code checks")
     try:
-        params = CulvertParams(**state["params"])
-        geometry = BoxGeometry(**state["geometry"])
-        analysis = AnalysisResult(**state["analysis"])
-        _narrate(
-            state,
-            "Checking members to IRS CBC — flexure, shear, minimum steel, "
-            "cover, crack control…",
-        )
-        output = run_member_checks(analysis, geometry, params)
+        module = _module(state)
+        _narrate(state, "Checking members to the component's code set…")
+        output = module.run_checks(state["params"], state["geometry"], state["analysis"])
 
         assumptions = list(state.get("assumptions") or []) + [
             a.model_dump() for a in output.assumptions
         ]
-        segments = [
-            [CalcStep(**step) for step in segment]
-            for segment in (state.get("trail_segments") or [])
-        ] + [output.trail]
-        sheet_path = compose_calc_sheet(
-            trail=segments,
-            checks=output.checks,
-            assumptions=[Assumption(**a) for a in assumptions],
+        trail_segments = list(state.get("trail_segments") or []) + [
+            [step.model_dump() for step in output.trail]
+        ]
+        sheet_path = module.compose_calc_sheet(
+            params=state["params"],
+            geometry=state["geometry"],
+            analysis=state["analysis"],
+            checks=[row.model_dump() for row in output.checks],
+            assumptions=assumptions,
             warnings=list(state.get("warnings") or []),
-            params=params,
-            geometry=geometry,
+            trail_segments=trail_segments,
             out_dir=_artifacts_dir(state),
         )
         artefacts = list(state.get("artefacts") or [])
@@ -442,9 +511,7 @@ def check(state: AgentState) -> dict:
 
         failing = [row for row in output.checks if row.status != "PASS"]
         if failing:
-            members = ", ".join(
-                sorted({MEMBER_LABELS.get(row.member, row.member) for row in failing})
-            )
+            members = _failing_members(failing)
             _narrate(
                 state,
                 f"{len(failing)} of {len(output.checks)} checks FAIL ({members}) — "
@@ -462,7 +529,18 @@ def check(state: AgentState) -> dict:
         }
     except Exception as exc:
         tracker.mark("Check", "failed", detail=str(exc))
-        return {"steps": tracker.steps, "error": f"IRS CBC member checks failed: {exc}"}
+        return {"steps": tracker.steps, "error": f"Member checks (check node) failed: {exc}"}
+
+
+def _failing_members(failing: list) -> str:
+    """Human-readable member list for the FAIL narration (culvert labels when available)."""
+    try:
+        from engine.checks import MEMBER_LABELS
+    except Exception:  # pragma: no cover - defensive for non-culvert components
+        MEMBER_LABELS = {}
+    return ", ".join(
+        sorted({MEMBER_LABELS.get(getattr(row, "member", ""), getattr(row, "member", "")) for row in failing})
+    )
 
 
 @_node
@@ -470,15 +548,12 @@ def draw(state: AgentState) -> dict:
     tracker = StepTracker(state)
     tracker.mark("Draw", "active", detail="Drawing the GA sheet")
     try:
-        from drawing.ga import generate_ga  # deterministic sibling slice — pinned contract
-
+        module = _module(state)
         run_id = state["run_id"]
-        geometry = BoxGeometry(**state["geometry"])
-        params = CulvertParams(**state["params"])
         out_dir = _artifacts_dir(state)
         _narrate(state, "Drawing the GA sheet — plan, sections, dimensions…")
 
-        paths = generate_ga(geometry, params, out_dir, run_id=run_id)
+        paths = module.draw(state["params"], state["geometry"], out_dir, run_id)
 
         artefacts = list(state.get("artefacts") or [])
         for kind in _ARTIFACT_ORDER:
@@ -492,22 +567,18 @@ def draw(state: AgentState) -> dict:
 
 @_node
 def model3d(state: AgentState) -> dict:
-    """Phase 3: build123d solid → model.glb + model.step from the SAME BoxGeometry.
+    """build123d solid → model.glb + model.step via the module.
 
     NON-FATAL BY DESIGN (spec/agent.md): on ANY failure — structlog error, one
     `warning` event, and the run continues to review with no model artefacts;
-    the 2D artefacts stand alone and the verdict/status are unaffected. The
-    Draw UI step is already 'done' from the draw node, so success publishes NO
-    extra step event (the Phase-2 skipped tag is gone).
+    the 2D artefacts stand alone and the verdict/status are unaffected.
     """
     artefacts = list(state.get("artefacts") or [])
     try:
-        from model3d import generate_solid  # heavy CAD kernel loads lazily
-
-        geometry = BoxGeometry(**state["geometry"])
+        module = _module(state)
         out_dir = _artifacts_dir(state)
         _narrate(state, "Building the 3D solid — GLB for the viewer, STEP for CAD…")
-        paths = generate_solid(geometry, out_dir)
+        paths = module.model3d(state["geometry"], out_dir)
         for kind in ("model_glb", "model_step"):
             _emit_artifact(state, artefacts, kind, paths[kind], "model3d")
         return {"artefacts": artefacts}
@@ -528,72 +599,42 @@ def model3d(state: AgentState) -> dict:
 
 @_node
 def review(state: AgentState) -> dict:
-    """The automatic proof-check: FE cross-check → 12-item checklist → memo.
+    """The automatic proof-check: module.proof_check → memo narration → type summary.
 
-    ONE Gemini call narrates the memo from the deterministic facts (1 retry
+    The module runs the deterministic FE/independent cross-check and checklist
+    and writes its diagram/compliance artefacts. ONE Gemini call narrates the
+    memo from the deterministic facts using the module's `memo_prompt()` (1 retry
     with backoff inside the provider, then the run fails transparently). A
-    narration that fails the grounding validator is NOT fatal — the memo falls
-    back to the fully deterministic composition. The verdict is computed by
-    rule in `run_checklist`, never by the LLM.
+    narration that fails the module's grounding validator is NOT fatal — the
+    memo falls back to the fully deterministic composition. The verdict is
+    computed by rule inside the module, never by the LLM.
     """
     tracker = StepTracker(state)
     tracker.mark("Review", "active", detail="Independent proof-check")
     try:
-        # Heavy deterministic deps (anastruct/matplotlib/ezdxf) load lazily here.
-        from engine.fe_check import BMD_FILENAME, SFD_FILENAME, cross_check
-        from proofcheck import (
-            COMPLIANCE_FILENAME,
-            PROOF_MEMO_FILENAME,
-            VERDICT_APPROVAL,
-            memo_facts,
-            render_memo,
-            run_checklist,
-            validate_narration,
-        )
-        from proofcheck.checklist import SEVERITY_MAJOR
-
-        params = CulvertParams(**state["params"])
-        geometry = BoxGeometry(**state["geometry"])
-        analysis = AnalysisResult(**state["analysis"])
-        checks = [CheckResult(**row) for row in (state.get("checks") or [])]
-        warnings = list(state.get("warnings") or [])
-        assumptions = [Assumption(**a) for a in (state.get("assumptions") or [])]
+        module = _module(state)
         out_dir = _artifacts_dir(state)
         artefacts = list(state.get("artefacts") or [])
 
-        _narrate(state, "Re-solving the frame independently (anaStruct FE cross-check)…")
-        fe = cross_check(params, geometry, analysis, out_dir)
-        _emit_artifact(state, artefacts, "bmd_svg", out_dir / BMD_FILENAME, "review")
-        _emit_artifact(state, artefacts, "sfd_svg", out_dir / SFD_FILENAME, "review")
-
-        _narrate(state, "Evaluating the 12-item proof-check checklist…")
-        result = run_checklist(
-            params=params,
-            geometry=geometry,
-            analysis=analysis,
-            checks=checks,
-            fe=fe,
+        _narrate(state, "Re-solving the structure independently (FE cross-check)…")
+        proof = module.proof_check(
+            params=state["params"],
+            geometry=state["geometry"],
+            analysis=state["analysis"],
+            checks=state.get("checks") or [],
             ga_dxf_path=out_dir / "ga.dxf",
             out_dir=out_dir,
         )
-        _emit_artifact(
-            state, artefacts, "compliance", out_dir / COMPLIANCE_FILENAME, "review"
-        )
+        for kind, filename in proof.artefacts:
+            _emit_artifact(state, artefacts, kind, out_dir / filename, "review")
 
         _narrate(state, "Drafting the proof-check memo…")
-        facts = memo_facts(
-            result,
-            params=params,
-            geometry=geometry,
-            warnings=warnings,
-            assumptions=assumptions,
-        )
         llm = LLMClient().generate(
-            facts, system=_load_prompt("memo.md"), temperature=0.2
+            proof.memo_facts, system=module.memo_prompt(), temperature=0.2
         )
         token_usage = _record_llm_call(state, "review", llm)
         narration: str | None = (llm.text or "").strip()
-        problems = validate_narration(narration, result, extra_facts=facts)
+        problems = proof.validate_narration(narration)
         if problems:
             # Rejection is never fatal — the memo stands fully deterministic.
             publish(
@@ -607,30 +648,31 @@ def review(state: AgentState) -> dict:
             )
             _log(state, "review").warning("memo_narration_rejected", problems=problems)
             narration = None
-        memo_md = render_memo(
-            result,
-            narration,
-            params=params,
-            geometry=geometry,
-            warnings=warnings,
-            assumptions=assumptions,
-        )
-        memo_path = out_dir / PROOF_MEMO_FILENAME
+        memo_md = proof.render_memo(narration)
+        memo_path = out_dir / proof.memo_filename
         memo_path.write_text(memo_md, encoding="utf-8")
-        _emit_artifact(state, artefacts, "proof_memo", memo_path, "review")
+        _emit_artifact(state, artefacts, proof.memo_kind, memo_path, "review")
 
-        if result.verdict == VERDICT_APPROVAL:
+        type_summary = module.type_summary(
+            params=state["params"],
+            geometry=state["geometry"],
+            analysis=state["analysis"],
+            checks=state.get("checks") or [],
+            proof=proof,
+        )
+
+        if proof.verdict == VERDICT_APPROVAL:
             detail = (
-                f"Recommended for approval — FE agreement {result.fe_agreement_pct:g}%"
+                f"Recommended for approval — FE agreement {proof.fe_agreement_pct:g}%"
             )
         else:
-            majors = sum(1 for item in result.items if item.severity == SEVERITY_MAJOR)
-            detail = f"Return for revision — {majors} major non-conformities"
+            detail = "Return for revision — major non-conformities found"
         tracker.mark("Review", "done", detail=detail)
         return {
-            "fe_comparison": fe.model_dump(),
-            "checklist": [item.model_dump() for item in result.items],
-            "verdict": result.verdict,
+            "fe_comparison": proof.fe_comparison.model_dump() if proof.fe_comparison else None,
+            "checklist": list(proof.checklist),
+            "verdict": proof.verdict,
+            "type_summary": type_summary,
             "artefacts": artefacts,
             "token_usage": token_usage,
             "steps": tracker.steps,
@@ -687,6 +729,7 @@ def finalize(state: AgentState) -> dict:
     persistence.finish_run(
         state["run_id"],
         status=status,
+        component_type=_component_type(state),
         plan_text=state.get("plan_text") or None,
         scope_message=state.get("scope_message"),
         params=state.get("params"),
@@ -696,6 +739,7 @@ def finalize(state: AgentState) -> dict:
         checks=check_rows or None,
         checklist=state.get("checklist") or None,
         verdict=verdict,
+        type_summary=state.get("type_summary"),
         suggestions=suggestions if status == "completed" else None,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
@@ -720,6 +764,7 @@ def finalize(state: AgentState) -> dict:
     _log(state, "finalize").info(
         "run_outcome",
         status=status,
+        component_type=_component_type(state),
         verdict=verdict,
         suggestions=len(suggestions),
         duration_ms=duration_ms(state),
@@ -738,6 +783,7 @@ def handle_error(state: AgentState) -> dict:
     persistence.finish_run(
         state["run_id"],
         status="failed",
+        component_type=_component_type(state),
         error_message=error,
         plan_text=state.get("plan_text") or None,
         steps=state.get("steps"),

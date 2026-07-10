@@ -8,7 +8,12 @@ REST + one SSE stream, served by FastAPI on `http://localhost:8001`. Every JSON 
 
 > **Assumed:** `/api` prefix for all new routes (keeps them disjoint from the `/app` static mount and `/health`).
 
-Routers: `src/api/sessions.py`, `src/api/designs.py` (submit + snapshot + SSE + artifacts), `src/api/presets.py` (Phase 3).
+Routers: `src/api/sessions.py`, `src/api/designs.py` (submit + snapshot + SSE + artifacts), `src/api/presets.py` (Phase 3), `src/api/components.py` (component catalogue — Expansion Phase 1).
+
+### `GET /api/components` *(Expansion Phase 1)*
+
+**Purpose:** the component catalogue for the picker/gallery — reads `registry.list_components()`.
+**Response `data`:** `{"components": [{"type_id", "display_name", "domain", "summary", "status", "codes": [...], "example_prompt"}]}` — `status` is `available` or `coming_soon`; the frontend greys `coming_soon` cards.
 
 ---
 
@@ -32,9 +37,12 @@ Routers: `src/api/sessions.py`, `src/api/designs.py` (submit + snapshot + SSE + 
 ```json
 {
   "prompt": "single box culvert, 4 m clear span, 3 m height, 2.5 m cushion, BG single line, 25t loading",
-  "preset_id": "optional — default preset used when omitted"
+  "preset_id": "optional — default preset used when omitted",
+  "component_type": "optional — picker choice (registry type_id); overrides auto-detect. Omit to auto-detect from the prompt"
 }
 ```
+
+`component_type`, when present and `status="available"`, is threaded to the run as `requested_component` and forces that component module; when omitted, `understand` classifies. A `422 UNKNOWN_COMPONENT` is returned if it is not a registered available type.
 
 **Response `data`:**
 ```json
@@ -79,8 +87,10 @@ Routers: `src/api/sessions.py`, `src/api/designs.py` (submit + snapshot + SSE + 
 ```json
 {
   "run_id": "...", "session_id": "...", "prompt": "...",
+  "component_type": "rcc_cantilever_retaining_wall",
   "status": "completed",
   "plan_text": "...", "scope_message": null, "clarification_question": null,
+  "type_summary": {"fos_overturning": 2.4, "fos_sliding": 1.7, "max_bearing_pressure_kn_m2": 165, "sbc_kn_m2": 200, "bearing_ok": true},
   "params": { "clear_span_m": 4.0, "...": "CulvertParams fields" },
   "assumptions": [{"field": "concrete_grade", "value": "M30", "source": "preset", "note": "..."}],
   "warnings": ["..."],

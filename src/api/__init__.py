@@ -42,12 +42,13 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="IR Box Culvert Design & Proof-Check Agent", version="0.1.0", lifespan=_lifespan
     )
-    from api import designs, health, presets, sessions
+    from api import components, designs, health, presets, sessions
 
     app.include_router(health.router)
     app.include_router(sessions.router)
     app.include_router(designs.router)
     app.include_router(presets.router)
+    app.include_router(components.router)
 
     # Serve the built Next.js static export at /app
     # Run `cd frontend && pnpm build` to generate frontend/out/ before starting.

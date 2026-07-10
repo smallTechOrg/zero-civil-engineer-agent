@@ -4,7 +4,9 @@
 
 ## Storage Technology
 
-SQLite via SQLAlchemy 2.0 + Alembic (the skeleton's stack, extended in place). SQLite **is** production for this local single-user demo — tests run against the same driver. Artefact **files** live on disk under `data/artifacts/`; the DB stores their records. Migration `alembic/versions/0002_culvert_schema.py` creates the four tables below and drops the legacy skeleton `runs` table (the `transform_text` capability it served is replaced).
+SQLite via SQLAlchemy 2.0 + Alembic (the skeleton's stack, extended in place). SQLite **is** production for this local single-user demo — tests run against the same driver. Artefact **files** live on disk under `data/artifacts/`; the DB stores their records. Migration `alembic/versions/0002_culvert_schema.py` creates the four tables below and drops the legacy skeleton `runs` table (the `transform_text` capability it served is replaced). Expansion-Phase-1 migration `alembic/versions/0003_component_platform.py` adds the `component_type` (default `box_culvert`, backfilled) and `type_summary_json` columns to `design_runs` — no table is dropped; the schema is otherwise component-agnostic (params/geometry are component-specific JSON, artefact `kind` is the shared fixed set).
+
+> **Assumed:** `design_runs.params_json` stays a free-form JSON blob keyed by the component's `param_model`; it is not reshaped per component, so no per-component tables are needed. The `artifacts.kind` set is shared across components (a retaining wall simply omits kinds it doesn't emit).
 
 ## Entities
 
@@ -29,6 +31,7 @@ One agent run = one turn: prompt in, artefacts + proof-check out. This is the au
 |-------|------|----------|-------------|
 | id | TEXT (uuid) | yes | Primary key; also the artefact directory name |
 | session_id | TEXT FK → sessions.id | yes | |
+| component_type | TEXT | yes (default `box_culvert`) | Registry `type_id` this run designed (`box_culvert` \| `rcc_cantilever_retaining_wall` \| …). Added by the Expansion-Phase-1 migration `0003`; existing rows backfill to `box_culvert` |
 | prompt | TEXT | yes | The user's NL request for this turn |
 | status | TEXT | yes | `running` \| `needs_input` \| `out_of_scope` \| `completed` \| `failed` |
 | plan_text | TEXT | no | The streamed design plan (Understand) |
@@ -41,6 +44,7 @@ One agent run = one turn: prompt in, artefacts + proof-check out. This is the au
 | checks_json | TEXT (JSON) | no | `CheckResult[]` rows (Phase 2) |
 | checklist_json | TEXT (JSON) | no | 12-item proof-check results (Phase 2) |
 | verdict | TEXT | no | `recommended_for_approval` \| `return_for_revision` (Phase 2) |
+| type_summary_json | TEXT (JSON) | no | Component's type-specific summary (culvert → member-check summary; retaining wall → stability summary {FoS overturning/sliding, max bearing, SBC}). Added by migration `0003` |
 | suggestions_json | TEXT (JSON) | no | 2–3 refinement suggestions (Phase 3) |
 | prompt_tokens | INTEGER | yes (default 0) | Sum over the run's LLM calls |
 | completion_tokens | INTEGER | yes (default 0) | |
@@ -84,9 +88,13 @@ Seeded by migration 0002 with one default preset (values = the engine defaults i
 
 ---
 
-## CulvertParams — the typed parameter model
+## Component parameter models
 
-The single Pydantic model (in `src/domain/culvert.py`) that drives everything: extraction schema, engine input, drawing input, 3D input, audit record. **Critical** fields must come from the user (never guessed — missing → the one clarifying question). All others default with an explicit `Assumption` record shown in the calc sheet.
+Each component declares its own typed parameter model (`ComponentModule.param_model`). The culvert's is `CulvertParams` (below); the retaining wall's is `RetainingWallParams` (field list normative in [capabilities/retaining-wall.md](capabilities/retaining-wall.md)). Both follow the same discipline: **critical** fields must come from the user (missing → one clarifying question); all others default with an explicit `Assumption` record. `Assumption`, `CalcStep`, and the derived-geometry pattern are shared shapes reused by every component. Presets carry component-scoped non-critical defaults; a run snapshots the applied preset values into `params_json`/`assumptions_json`.
+
+## CulvertParams — the culvert parameter model
+
+The Pydantic model (in `src/domain/culvert.py`) that drives the culvert component: extraction schema, engine input, drawing input, 3D input, audit record. **Critical** fields must come from the user (never guessed — missing → the one clarifying question). All others default with an explicit `Assumption` record shown in the calc sheet.
 
 | Field | Type | Critical | Default (preset) | Valid range / unusual-flag rule |
 |-------|------|----------|------------------|--------------------------------|

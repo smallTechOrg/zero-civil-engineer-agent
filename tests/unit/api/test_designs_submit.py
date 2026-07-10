@@ -7,8 +7,8 @@ def test_submit_design_happy_path(api_client, make_session_row, monkeypatch):
     session_id = make_session_row()
     calls = {}
 
-    def fake_start(sess_id, prompt, preset_id=None):
-        calls["args"] = (sess_id, prompt, preset_id)
+    def fake_start(sess_id, prompt, preset_id=None, requested_component=None):
+        calls["args"] = (sess_id, prompt, preset_id, requested_component)
         return "run-abc-123"
 
     monkeypatch.setattr("api.designs._start_design_run", fake_start)
@@ -25,9 +25,11 @@ def test_submit_design_happy_path(api_client, make_session_row, monkeypatch):
         "events_url": "/api/designs/run-abc-123/events",
         "snapshot_url": "/api/designs/run-abc-123",
     }
+    # component_type omitted → auto-detect (requested_component is None)
     assert calls["args"] == (
         session_id,
         "single box culvert, 4 m clear span, 3 m height, 2.5 m cushion",
+        None,
         None,
     )
 
@@ -37,7 +39,10 @@ def test_submit_design_passes_preset_id(api_client, make_session_row, monkeypatc
     calls = {}
     monkeypatch.setattr(
         "api.designs._start_design_run",
-        lambda s, p, preset_id=None: calls.setdefault("preset", preset_id) or "run-x",
+        lambda s, p, preset_id=None, requested_component=None: calls.setdefault(
+            "preset", preset_id
+        )
+        or "run-x",
     )
     r = api_client.post(
         f"/api/sessions/{session_id}/designs",
@@ -45,6 +50,44 @@ def test_submit_design_passes_preset_id(api_client, make_session_row, monkeypatc
     )
     assert r.status_code == 200
     assert calls["preset"] == "preset-9"
+
+
+def test_submit_design_passes_component_type_when_available(
+    api_client, make_session_row, monkeypatch
+):
+    session_id = make_session_row()
+    calls = {}
+    monkeypatch.setattr(
+        "api.designs._start_design_run",
+        lambda s, p, preset_id=None, requested_component=None: calls.setdefault(
+            "component", requested_component
+        )
+        or "run-y",
+    )
+    r = api_client.post(
+        f"/api/sessions/{session_id}/designs",
+        json={"prompt": "make me one", "component_type": "box_culvert"},
+    )
+    assert r.status_code == 200
+    assert calls["component"] == "box_culvert"
+
+
+def test_submit_design_unknown_component_type_422(api_client, make_session_row, monkeypatch):
+    session_id = make_session_row()
+    monkeypatch.setattr(
+        "api.designs._start_design_run",
+        lambda *a, **k: pytest_fail_never_called(),
+    )
+    r = api_client.post(
+        f"/api/sessions/{session_id}/designs",
+        json={"prompt": "design something", "component_type": "not_a_real_component"},
+    )
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "UNKNOWN_COMPONENT"
+
+
+def pytest_fail_never_called():  # pragma: no cover - guards the 422-before-run path
+    raise AssertionError("the run must not start for an unknown component type")
 
 
 def test_submit_design_sets_title_from_first_prompt(

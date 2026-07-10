@@ -50,10 +50,23 @@ ARTIFACT_FILES: dict[str, tuple[str, str]] = {
 # --- Lazy accessors for the graph slice's surfaces (patched in unit tests) -----
 
 
-def _start_design_run(session_id: str, prompt: str, preset_id: str | None = None) -> str:
+def _start_design_run(
+    session_id: str,
+    prompt: str,
+    preset_id: str | None = None,
+    requested_component: str | None = None,
+) -> str:
     from graph.runner import start_design_run
 
-    return start_design_run(session_id, prompt, preset_id=preset_id)
+    return start_design_run(
+        session_id, prompt, preset_id=preset_id, requested_component=requested_component
+    )
+
+
+def _component_is_available(type_id: str) -> bool:
+    from components import registry
+
+    return registry.is_available(type_id)
 
 
 def _progress_is_active(run_id: str) -> bool:
@@ -80,10 +93,12 @@ def _snapshot_from_row(row: DesignRunRow, artifact_rows: list[ArtifactRow]) -> R
         run_id=row.id,
         session_id=row.session_id,
         prompt=row.prompt,
+        component_type=row.component_type,
         status=row.status,
         plan_text=row.plan_text,
         scope_message=row.scope_message,
         clarification_question=row.clarification_question,
+        type_summary=_loads(row.type_summary_json, None),
         params=_loads(row.params_json, None),
         assumptions=_loads(row.assumptions_json, []),
         warnings=_loads(row.warnings_json, []),
@@ -148,13 +163,28 @@ def submit_design(
     if not prompt:
         raise api_error("EMPTY_PROMPT", "Prompt must not be blank", 422)
 
+    requested_component = req.component_type
+    if requested_component is not None and not _component_is_available(requested_component):
+        raise api_error(
+            "UNKNOWN_COMPONENT",
+            f"'{requested_component}' is not a registered, available component type",
+            422,
+        )
+
     if not session_row.title:
         session_row.title = prompt[:SESSION_TITLE_MAX_CHARS]
     session_row.updated_at = datetime.now(timezone.utc)
     # Persist before the background run thread opens its own DB session.
     session.commit()
 
-    run_id = _start_design_run(session_id, prompt, req.preset_id)
+    # Keep the legacy 3-arg call when no picker choice is present (auto-detect);
+    # only thread requested_component through when the picker forces a type.
+    if requested_component is None:
+        run_id = _start_design_run(session_id, prompt, req.preset_id)
+    else:
+        run_id = _start_design_run(
+            session_id, prompt, req.preset_id, requested_component=requested_component
+        )
     return ok(
         DesignSubmitted(
             run_id=run_id,
@@ -197,7 +227,7 @@ def list_designs(
             prompt=row.prompt,
             status=row.status,
             verdict=row.verdict,
-            params_summary=_params_summary(_loads(row.params_json, None)),
+            params_summary=_params_summary(_loads(row.params_json, None), row.component_type),
             cost_usd=row.cost_usd,
             started_at=iso(row.started_at),
             duration_ms=row.duration_ms,
@@ -285,10 +315,20 @@ def _fmt_num(value: float) -> str:
     return text + "0" if text.endswith(".") else text
 
 
-def _params_summary(params: dict | None) -> str:
-    """e.g. '4.0 × 3.0 m, cushion 2.5 m, 25t-2008' — empty string when no params."""
+RETAINING_WALL_TYPE = "rcc_cantilever_retaining_wall"
+
+
+def _params_summary(params: dict | None, component_type: str | None = None) -> str:
+    """A one-line params summary for the library row.
+
+    Culvert (default): '4.0 × 3.0 m, cushion 2.5 m, 25t-2008'.
+    Retaining wall: '5.0 m retained, SBC 200 kN/m²'.
+    Empty string when there are no params (e.g. a failed/clarifying run).
+    """
     if not params:
         return ""
+    if component_type == RETAINING_WALL_TYPE:
+        return _retaining_wall_summary(params)
     try:
         span, height, cushion = (
             params["clear_span_m"],
@@ -300,3 +340,13 @@ def _params_summary(params: dict | None) -> str:
     summary = f"{_fmt_num(span)} × {_fmt_num(height)} m, cushion {_fmt_num(cushion)} m"
     loading = params.get("loading_standard")
     return f"{summary}, {loading}" if loading else summary
+
+
+def _retaining_wall_summary(params: dict) -> str:
+    """e.g. '5.0 m retained, SBC 200 kN/m²' — empty when the RW criticals are absent."""
+    try:
+        height = params["retained_height_m"]
+        sbc = params["safe_bearing_capacity_kn_m2"]
+    except KeyError:
+        return ""
+    return f"{_fmt_num(height)} m retained, SBC {_fmt_num(sbc)} kN/m²"

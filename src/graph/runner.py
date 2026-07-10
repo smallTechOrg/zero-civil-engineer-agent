@@ -18,15 +18,26 @@ from observability import progress
 from observability.events import configure_logging, get_logger
 
 
-def start_design_run(session_id: str, prompt: str, preset_id: str | None = None) -> str:
+def start_design_run(
+    session_id: str,
+    prompt: str,
+    preset_id: str | None = None,
+    *,
+    requested_component: str | None = None,
+) -> str:
     # Idempotent: the app configures structlog at startup, but the runner can be
     # entered directly (tests, scripts) — background-thread logs stay JSON either way.
     configure_logging(get_settings().log_level)
     run_id = persistence.create_run_row(session_id, prompt)
+    # An explicit picker choice overrides auto-detect; otherwise `understand`
+    # classifies and sets component_type. Default to box_culvert until then.
+    component_type = requested_component or "box_culvert"
     state: AgentState = {
         "run_id": run_id,
         "session_id": session_id,
         "user_prompt": prompt,
+        "component_type": component_type,
+        "requested_component": requested_component,
         "messages": persistence.load_messages(session_id, exclude_run_id=run_id),
         "prior_params": persistence.load_prior_params(session_id, exclude_run_id=run_id),
         "preset_values": persistence.load_preset_values(preset_id),
@@ -45,6 +56,7 @@ def start_design_run(session_id: str, prompt: str, preset_id: str | None = None)
         "fe_comparison": None,
         "checklist": [],
         "verdict": None,
+        "type_summary": None,
         "artefacts": [],
         "token_usage": [],
         "steps": initial_steps(),

@@ -10,8 +10,10 @@ class AgentState(TypedDict, total=False):
 
     # Input
     user_prompt: str                 # this turn's NL request
+    component_type: str              # registry type_id — set by `understand` (classify) or the picker
+    requested_component: str | None  # explicit picker choice from the API (overrides auto-detect)
     messages: list[dict]             # session history: [{role, content}] incl. prior clarification Q/A
-    prior_params: dict | None        # accepted CulvertParams from the session's last completed run
+    prior_params: dict | None        # accepted params from the session's last completed run
     preset_values: dict              # defaults preset applied to this run
 
     # Understand
@@ -34,6 +36,7 @@ class AgentState(TypedDict, total=False):
     fe_comparison: dict | None       # FeComparison — FE-vs-closed-form diff
     checklist: list[dict]            # 12-item proof-check results (full item dicts)
     verdict: str | None              # "recommended_for_approval" | "return_for_revision"
+    type_summary: dict | None        # component-specific summary from module.type_summary
     artefacts: list[dict]            # [{kind, filename}] as written
     suggestions: list[str]           # Phase 3
 

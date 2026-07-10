@@ -22,6 +22,10 @@ interface PromptPanelProps {
   disabledReason: string | null
   formError: string | null
   clarificationQuestion: string | null
+  /** Type-aware placeholder — the picked component's example prompt. */
+  placeholder?: string
+  /** Type-aware one-line hint naming the key inputs for the picked component. */
+  hint?: string | null
 }
 
 export default function PromptPanel({
@@ -33,6 +37,8 @@ export default function PromptPanel({
   disabledReason,
   formError,
   clarificationQuestion,
+  placeholder = CANONICAL_PROMPT,
+  hint = null,
 }: PromptPanelProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
@@ -62,6 +68,11 @@ export default function PromptPanel({
       <label htmlFor="prompt-input" className="block text-sm font-semibold uppercase tracking-wide text-slate-500">
         {mode === 'answer' ? 'Your answer' : 'Design request'}
       </label>
+      {mode !== 'answer' && hint && (
+        <p data-testid="prompt-hint" className="text-sm leading-snug text-slate-500">
+          {hint}
+        </p>
+      )}
       <textarea
         id="prompt-input"
         data-testid="prompt-input"
@@ -76,7 +87,7 @@ export default function PromptPanel({
           }
         }}
         disabled={disabled}
-        placeholder={CANONICAL_PROMPT}
+        placeholder={placeholder}
         className="w-full resize-y rounded-lg border border-slate-300 bg-white p-3 text-base leading-relaxed text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-200 disabled:bg-slate-100 disabled:text-slate-500"
       />
 

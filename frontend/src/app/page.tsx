@@ -1,7 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ArtefactTabs, { type TabId } from '@/components/ArtefactTabs'
+import ComponentPicker from '@/components/ComponentPicker'
+import DetectedTypeChip from '@/components/DetectedTypeChip'
 import PromptPanel, { CANONICAL_PROMPT, type PromptMode } from '@/components/PromptPanel'
 import StatusLine from '@/components/StatusLine'
 import StepTracker from '@/components/StepTracker'
@@ -14,6 +16,7 @@ import {
   fetchArtefactJson,
   fetchArtefactText,
   getRunSnapshot,
+  listComponents,
   listDesigns,
   runEventsUrl,
   submitDesign,
@@ -24,11 +27,13 @@ import {
   type ArtefactRecord,
   type CalcSheetData,
   type ComplianceData,
+  type ComponentCard,
   type RunListItem,
   type RunSnapshot,
   type RunStatus,
   type StepName,
   type StepState,
+  type TypeSummary,
   type Verdict,
 } from '@/lib/types'
 
@@ -38,6 +43,8 @@ interface RunView {
   runId: string
   prompt: string
   status: RunStatus
+  componentType: string | null
+  typeSummary: TypeSummary | null
   steps: Record<StepName, StepState>
   narration: string
   warnings: string[]
@@ -106,6 +113,8 @@ function viewFromSnapshot(snap: RunSnapshot): RunView {
     runId: snap.run_id,
     prompt: snap.prompt,
     status: snap.status,
+    componentType: snap.component_type ?? null,
+    typeSummary: snap.type_summary ?? null,
     steps: stepsFromSnapshot(snap),
     narration: terminalNarration(snap.status) ?? snap.plan_text ?? '',
     warnings: snap.warnings ?? [],
@@ -130,6 +139,9 @@ function viewFromSnapshot(snap: RunSnapshot): RunView {
 export default function DesignStudio() {
   const [booting, setBooting] = useState(true)
   const [sessionId, setSessionId] = useState<string | null>(null)
+  const [components, setComponents] = useState<ComponentCard[]>([])
+  // null = "Let the agent decide" (auto-detect). Otherwise a registry type_id.
+  const [selectedComponent, setSelectedComponent] = useState<string | null>(null)
   const [turns, setTurns] = useState<RunListItem[]>([])
   const [turnDetails, setTurnDetails] = useState<Record<string, TurnDetail>>({})
   const [run, setRun] = useState<RunView | null>(null)
@@ -248,6 +260,8 @@ export default function DesignStudio() {
           const final = viewFromSnapshot(snap)
           return {
             ...final,
+            componentType: final.componentType ?? prev.componentType ?? null,
+            typeSummary: final.typeSummary ?? prev.typeSummary ?? null,
             // Keep artefacts already streamed in — loadRunArtefacts refreshes them.
             svgMarkup: prev.svgMarkup,
             calcSheet: prev.calcSheet ?? final.calcSheet,
@@ -280,6 +294,8 @@ export default function DesignStudio() {
         const next = viewFromSnapshot(snap)
         return {
           ...next,
+          componentType: next.componentType ?? prev?.componentType ?? null,
+          typeSummary: next.typeSummary ?? prev?.typeSummary ?? null,
           svgMarkup: prev?.svgMarkup ?? null,
           calcSheet: prev?.calcSheet ?? next.calcSheet,
           compliance: prev?.compliance ?? next.compliance,
@@ -391,7 +407,7 @@ export default function DesignStudio() {
   )
 
   const beginLiveRun = useCallback(
-    (runId: string, sid: string, prompt: string) => {
+    (runId: string, sid: string, prompt: string, componentType: string | null) => {
       elapsedBaseRef.current = { baseMs: 0, wallStart: Date.now() }
       setElapsedMs(0)
       setActiveTab('drawing')
@@ -399,6 +415,9 @@ export default function DesignStudio() {
         runId,
         prompt,
         status: 'running',
+        // Explicit pick is known immediately; auto-detect fills in from the snapshot.
+        componentType,
+        typeSummary: null,
         steps: initialSteps(),
         narration: '',
         warnings: [],
@@ -455,9 +474,10 @@ export default function DesignStudio() {
           sid = (await createSession()).session_id
           persistSession(sid)
         }
+        const pickedType = selectedComponent
         let response
         try {
-          response = await submitDesign(sid, prompt)
+          response = await submitDesign(sid, prompt, pickedType)
         } catch (error) {
           if (error instanceof ApiError && error.status === 404) {
             // Stored session no longer exists (fresh database) — start a new one.
@@ -466,19 +486,21 @@ export default function DesignStudio() {
             setTurns([])
             setTurnDetails({})
             setSessionCostUsd(0)
-            response = await submitDesign(sid, prompt)
+            response = await submitDesign(sid, prompt, pickedType)
           } else {
             throw error
           }
         }
         setPromptValue('')
-        beginLiveRun(response.run_id, sid, prompt)
+        beginLiveRun(response.run_id, sid, prompt, pickedType)
       } catch (error) {
         if (error instanceof ApiError) {
           if (error.code === 'RUN_ACTIVE') {
             setFormError('A run is already in progress in this session — wait for it to finish.')
           } else if (error.code === 'EMPTY_PROMPT') {
             setFormError('Type a design request first — the placeholder shows a complete example.')
+          } else if (error.code === 'UNKNOWN_COMPONENT') {
+            setFormError('That component is not available yet — pick an available one or let the agent decide.')
           } else {
             setFormError(error.message)
           }
@@ -489,7 +511,7 @@ export default function DesignStudio() {
         setSubmitting(false)
       }
     },
-    [beginLiveRun, persistSession, sessionId, submitting],
+    [beginLiveRun, persistSession, selectedComponent, sessionId, submitting],
   )
 
   const loadPastRun = useCallback(
@@ -580,6 +602,37 @@ export default function DesignStudio() {
     return () => clearTimeout(id)
   }, [toast])
 
+  // Component catalogue for the picker (GET /api/components). A fetch failure
+  // is non-fatal — the picker simply hides and auto-detect still works.
+  useEffect(() => {
+    let cancelled = false
+    listComponents()
+      .then(cat => {
+        if (!cancelled) setComponents(cat.components)
+      })
+      .catch(() => {
+        // catalogue unavailable — picker stays hidden, auto-detect remains
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const componentsById = useMemo(
+    () => Object.fromEntries(components.map(c => [c.type_id, c])) as Record<string, ComponentCard>,
+    [components],
+  )
+  const selectedCard = selectedComponent ? componentsById[selectedComponent] ?? null : null
+
+  // Auto-detect chip: only when the user did NOT pick explicitly, the run
+  // classified a component, and Understand has started.
+  const detectedDisplayName =
+    selectedComponent === null &&
+    run?.componentType &&
+    (run.steps.Understand.status === 'active' || run.steps.Understand.status === 'done')
+      ? componentsById[run.componentType]?.display_name ?? run.componentType.replace(/_/g, ' ')
+      : null
+
   const latestTurn = turns[0] ?? null
   const runIsLatest = !latestTurn || run?.runId === latestTurn.run_id
 
@@ -625,7 +678,14 @@ export default function DesignStudio() {
 
       <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[24rem_minmax(0,1fr)]">
         <aside className="flex min-h-0 flex-col border-r border-slate-200 bg-slate-50" aria-label="Session panel">
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+            <ComponentPicker
+              components={components}
+              activeTypeId={selectedComponent}
+              onSelect={setSelectedComponent}
+              disabled={promptDisabled}
+            />
+            {components.length > 0 && <div className="border-t border-slate-200" />}
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Session</h2>
             <TurnHistory
               turns={turns}
@@ -649,6 +709,12 @@ export default function DesignStudio() {
               disabledReason={isRunning ? 'A design run is in progress — the prompt re-opens when it finishes.' : null}
               formError={formError}
               clarificationQuestion={pendingQuestion}
+              placeholder={selectedCard?.example_prompt || CANONICAL_PROMPT}
+              hint={
+                selectedCard
+                  ? `Designing a ${selectedCard.display_name}. ${selectedCard.summary}`
+                  : 'The agent auto-detects the component — or pick one above.'
+              }
             />
           </div>
         </aside>
@@ -736,10 +802,22 @@ export default function DesignStudio() {
                 )}
               </section>
 
+              <DetectedTypeChip
+                displayName={detectedDisplayName}
+                onSwitch={() => {
+                  document
+                    .querySelector('[data-testid="component-picker"]')
+                    ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                }}
+                disabled={isRunning}
+              />
+
               <section className="flex min-h-[28rem] flex-1 flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <ArtefactTabs
                   activeTab={activeTab}
                   onTabChange={setActiveTab}
+                  componentType={run?.componentType ?? null}
+                  typeSummary={run?.typeSummary ?? null}
                   svgMarkup={run?.svgMarkup ?? null}
                   dxfUrl={run?.dxfUrl ?? null}
                   calcSheet={run?.calcSheet ?? null}

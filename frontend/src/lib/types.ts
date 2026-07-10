@@ -158,11 +158,52 @@ export interface CheckRow {
   status: 'PASS' | 'FAIL' | string
 }
 
+// ---------------------------------------------------------------------------
+// Component catalogue (GET /api/components) — Expansion Phase 1. The picker
+// greys `coming_soon` cards; `available` cards are selectable.
+// ---------------------------------------------------------------------------
+
+export type ComponentStatus = 'available' | 'coming_soon'
+
+export interface ComponentCard {
+  type_id: string
+  display_name: string
+  domain: string
+  summary: string
+  status: ComponentStatus
+  codes: string[]
+  example_prompt?: string | null
+}
+
+export interface ComponentCatalogue {
+  components: ComponentCard[]
+}
+
+// ---------------------------------------------------------------------------
+// type_summary — type-aware Stability panel (tab 0). Driven generically by
+// component_type + type_summary; for a retaining wall the shape is the
+// stability summary below (spec/capabilities/retaining-wall.md). A new
+// component's summary needs no new frontend code beyond the generic renderer.
+// ---------------------------------------------------------------------------
+
+export interface RetainingWallTypeSummary {
+  fos_overturning: number
+  fos_sliding: number
+  max_bearing_pressure_kn_m2: number
+  sbc_kn_m2: number
+  bearing_ok: boolean
+}
+
+/** Loosely typed: the renderer keys off known fields but tolerates any shape. */
+export type TypeSummary = Record<string, unknown>
+
 export interface RunSnapshot {
   run_id: string
   session_id: string
   prompt: string
   status: RunStatus
+  component_type?: string | null
+  type_summary?: TypeSummary | null
   plan_text: string | null
   scope_message: string | null
   clarification_question: string | null

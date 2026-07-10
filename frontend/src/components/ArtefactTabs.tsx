@@ -5,9 +5,10 @@ import DrawingViewer from './DrawingViewer'
 import LibraryPanel from './LibraryPanel'
 import Model3DViewer from './Model3DViewer'
 import ProofCheckPanel from './ProofCheckPanel'
-import type { CalcSheetData, ComplianceData, Verdict } from '@/lib/types'
+import TypeSummaryPanel from './TypeSummaryPanel'
+import type { CalcSheetData, ComplianceData, TypeSummary, Verdict } from '@/lib/types'
 
-export type TabId = 'drawing' | 'calc-sheet' | 'proof-check' | '3d-model' | 'library'
+export type TabId = 'summary' | 'drawing' | 'calc-sheet' | 'proof-check' | '3d-model' | 'library'
 
 interface TabDef {
   id: TabId
@@ -15,6 +16,7 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
+  { id: 'summary', label: 'Stability' },
   { id: 'drawing', label: 'Drawing' },
   { id: 'calc-sheet', label: 'Calc Sheet' },
   { id: 'proof-check', label: 'Proof-Check' },
@@ -25,6 +27,8 @@ const TABS: TabDef[] = [
 interface ArtefactTabsProps {
   activeTab: TabId
   onTabChange: (tab: TabId) => void
+  componentType: string | null
+  typeSummary: TypeSummary | null
   svgMarkup: string | null
   dxfUrl: string | null
   calcSheet: CalcSheetData | null
@@ -49,6 +53,8 @@ interface ArtefactTabsProps {
 export default function ArtefactTabs({
   activeTab,
   onTabChange,
+  componentType,
+  typeSummary,
   svgMarkup,
   dxfUrl,
   calcSheet,
@@ -101,6 +107,15 @@ export default function ArtefactTabs({
         aria-labelledby={`tab-${activeTab}`}
         className="min-h-0 flex-1 overflow-auto bg-white p-4"
       >
+        {activeTab === 'summary' && (
+          <TypeSummaryPanel
+            componentType={componentType}
+            typeSummary={typeSummary}
+            isRunning={isRunning}
+            runFailed={runFailed}
+            hasRun={hasRun}
+          />
+        )}
         {activeTab === 'drawing' && (
           <DrawingViewer
             svgMarkup={svgMarkup}
