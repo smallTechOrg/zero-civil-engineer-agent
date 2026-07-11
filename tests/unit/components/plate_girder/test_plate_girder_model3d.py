@@ -12,7 +12,7 @@ from components.plate_girder.model3d import (
 from components.plate_girder.params import PlateGirderGeometry, PlateGirderParams
 from components.plate_girder.sizing import size_girder
 
-PARAMS = PlateGirderParams(span_m=18.0)
+PARAMS = PlateGirderParams(span_m=18.0, steel_grade="E250")
 
 
 @pytest.fixture
@@ -40,6 +40,6 @@ def test_glb_is_a_valid_non_empty_binary_gltf_and_step_is_written(geometry, tmp_
 
 
 def test_solid_builds_for_a_deep_long_span_girder(tmp_path: Path):
-    geometry = size_girder(PlateGirderParams(span_m=40.0)).geometry
+    geometry = size_girder(PlateGirderParams(span_m=40.0, steel_grade="E250")).geometry
     solid = build_girder_solid(geometry)
     assert solid.volume > 0

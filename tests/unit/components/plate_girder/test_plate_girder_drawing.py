@@ -9,7 +9,7 @@ from components.plate_girder.drawing import InvalidGeometryError, generate_ga
 from components.plate_girder.params import PlateGirderGeometry, PlateGirderParams
 from components.plate_girder.sizing import size_girder
 
-PARAMS = PlateGirderParams(span_m=24.0)
+PARAMS = PlateGirderParams(span_m=24.0, steel_grade="E250")
 
 
 @pytest.fixture
@@ -40,7 +40,9 @@ def test_ga_svg_is_non_empty_and_well_formed(geometry, tmp_path: Path):
 
 
 def test_ga_drawing_handles_a_through_type_girder(tmp_path: Path):
-    params = PlateGirderParams(span_m=30.0, deck_type="through", number_of_girders=2)
+    params = PlateGirderParams(
+        span_m=30.0, steel_grade="E250", deck_type="through", number_of_girders=2
+    )
     geometry = size_girder(params).geometry
     paths = generate_ga(params, geometry, tmp_path, run_id="through")
     assert not ezdxf.readfile(paths["ga_dxf"]).audit().has_errors

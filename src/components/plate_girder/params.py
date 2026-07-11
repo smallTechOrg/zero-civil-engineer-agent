@@ -1,10 +1,10 @@
 """Welded steel plate-girder parameter and geometry models + intake schema.
 
 `PlateGirderParams` is the single validated parameter model (extraction target,
-engine input, drawing input, audit record). The one critical field (`span_m`)
-carries no default — it must come from the user. `None` on a section field means
-"auto-size". Field names, defaults and hard ranges are normative per
-spec/capabilities/plate-girder.md.
+engine input, drawing input, audit record). The two critical fields (`span_m`,
+`steel_grade`) carry no default — they must come from the user, asked for in
+that order. `None` on a section field means "auto-size". Field names, defaults
+and hard ranges are normative per spec/capabilities/plate-girder.md.
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from domain.culvert import Gauge, LoadingStandard
 
-# The single critical field, never guessed/defaulted.
-CRITICAL_FIELDS = ("span_m",)
+# The critical fields, never guessed/defaulted — asked for in this order.
+CRITICAL_FIELDS = ("span_m", "steel_grade")
 
 # Unusual-value threshold (flag and proceed — not a hard limit).
 SPAN_WARNING_M = 45.0
@@ -34,6 +34,9 @@ class PlateGirderParams(BaseModel):
     span_m: float = Field(
         ..., ge=6.0, le=60.0, description="Effective (simply-supported) span, m"
     )
+    steel_grade: SteelGradeLiteral = Field(
+        ..., description="Structural steel grade (E250 / E350)"
+    )
 
     # --- loading / configuration defaults ---
     loading_standard: LoadingStandard = Field(
@@ -46,11 +49,6 @@ class PlateGirderParams(BaseModel):
     )
     number_of_girders: int = Field(
         default=2, ge=2, le=6, description="Number of main plate girders across the deck"
-    )
-
-    # --- materials ---
-    steel_grade: SteelGradeLiteral = Field(
-        default="E250", description="Structural steel grade (E250 / E350)"
     )
 
     # --- section overrides (None = auto-size) ---
@@ -148,6 +146,9 @@ CLARIFICATION_QUESTIONS: dict[str, str] = {
     "span_m": (
         "What is the effective span of the girder — the simply-supported span between "
         "bearing centres? Welded plate girders typically run about 6 m to 60 m."
+    ),
+    "steel_grade": (
+        "What steel grade should the girder be designed in — E250 or E350 (per IS 2062)?"
     ),
 }
 

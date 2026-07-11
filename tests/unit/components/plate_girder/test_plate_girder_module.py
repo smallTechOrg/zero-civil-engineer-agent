@@ -15,7 +15,7 @@ from components.base import (
 from components.plate_girder.params import PlateGirderGeometry, PlateGirderParams
 
 TYPE_ID = "plate_girder"
-CANONICAL = {"span_m": 24.0}
+CANONICAL = {"span_m": 24.0, "steel_grade": "E250"}
 
 
 @pytest.fixture
@@ -41,7 +41,7 @@ def test_declares_full_metadata(girder):
     assert girder.param_model is PlateGirderParams
     assert girder.geometry_model is PlateGirderGeometry
     assert set(girder.codes) == {"IRS Steel Bridge Code", "IS 800", "IR Bridge Rules"}
-    assert girder.critical_fields == ["span_m"]
+    assert girder.critical_fields == ["span_m", "steel_grade"]
     assert any("plate girder" in ex.lower() for ex in girder.scope_examples)
 
 

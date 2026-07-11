@@ -29,8 +29,10 @@ def _run(params: PlateGirderParams, out_dir: Path):
     return result, g, analysis
 
 
-SOUND = PlateGirderParams(span_m=24.0)
-UNDER = PlateGirderParams(span_m=24.0, flange_thickness_mm=12.0, flange_width_mm=250.0)
+SOUND = PlateGirderParams(span_m=24.0, steel_grade="E250")
+UNDER = PlateGirderParams(
+    span_m=24.0, steel_grade="E250", flange_thickness_mm=12.0, flange_width_mm=250.0
+)
 
 
 def test_sound_girder_is_recommended_for_approval(tmp_path: Path):

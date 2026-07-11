@@ -11,11 +11,11 @@ from components.plate_girder.params import (
     unusual_value_warnings,
 )
 
-MINIMAL = dict(span_m=24.0)
+MINIMAL = dict(span_m=24.0, steel_grade="E250")
 
 
-def test_critical_field_is_span_only():
-    assert CRITICAL_FIELDS == ("span_m",)
+def test_critical_fields_are_span_and_steel_grade_in_order():
+    assert CRITICAL_FIELDS == ("span_m", "steel_grade")
 
 
 def test_defaults_are_applied_for_non_critical_fields():
@@ -24,7 +24,6 @@ def test_defaults_are_applied_for_non_critical_fields():
     assert params.gauge.value == "BG"
     assert params.deck_type == "deck"
     assert params.number_of_girders == 2
-    assert params.steel_grade == "E250"
     # Section overrides default to None (auto-size).
     assert params.web_depth_mm is None
     assert params.flange_thickness_mm is None
@@ -32,7 +31,12 @@ def test_defaults_are_applied_for_non_critical_fields():
 
 def test_span_is_required():
     with pytest.raises(ValidationError):
-        PlateGirderParams()
+        PlateGirderParams(steel_grade="E250")
+
+
+def test_steel_grade_is_required():
+    with pytest.raises(ValidationError):
+        PlateGirderParams(span_m=24.0)
 
 
 @pytest.mark.parametrize(
@@ -79,3 +83,10 @@ def test_extraction_schema_covers_every_param_field_and_is_all_optional():
 def test_clarification_question_exists_for_the_critical_field():
     for field in CRITICAL_FIELDS:
         assert CLARIFICATION_QUESTIONS[field].strip()
+
+
+def test_clarification_question_ordering_asks_span_before_steel_grade():
+    assert CRITICAL_FIELDS[0] == "span_m"
+    assert CRITICAL_FIELDS[1] == "steel_grade"
+    assert "E250" in CLARIFICATION_QUESTIONS["steel_grade"]
+    assert "E350" in CLARIFICATION_QUESTIONS["steel_grade"]

@@ -38,7 +38,7 @@ def test_plate_girder_input_never_extracts_culvert_grade_fe500(require_gemini):
     )
 
     # And the merged params must construct — no Fe500 ValidationError.
-    merged = {"span_m": 24.0, **extracted}  # span is the one critical field
+    merged = {"span_m": 24.0, "steel_grade": "E250", **extracted}  # both critical fields
     params = PlateGirderParams(**merged)
     assert params.steel_grade in ("E250", "E350")
 

@@ -68,8 +68,8 @@ _FOREIGN_MECHANICAL_PATTERNS = tuple(
 )
 _ALL_FORBIDDEN = tuple(_FORBIDDEN_CITATION_PATTERNS) + _FOREIGN_MECHANICAL_PATTERNS
 
-LONG_SPAN = PlateGirderParams(span_m=24.0)
-SHORT_SPAN = PlateGirderParams(span_m=18.0)
+LONG_SPAN = PlateGirderParams(span_m=24.0, steel_grade="E250")
+SHORT_SPAN = PlateGirderParams(span_m=18.0, steel_grade="E250")
 
 
 def _forbidden_hit(text: str) -> str | None:

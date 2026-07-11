@@ -13,7 +13,7 @@ Designs an IR welded steel plate-girder bridge superstructure from a natural-lan
 
 ## Fixed parameter model — `PlateGirderParams` (`src/components/plate_girder/params.py`)
 
-**Normative field list** (the code slice builds against exactly this — it is shared with the engine/drawing/3D). **Critical** fields must come from the user (never defaulted → the one clarifying question). `CRITICAL_FIELDS = ("span_m",)`. Any override left `None` is **auto-sized** by the engine.
+**Normative field list** (the code slice builds against exactly this — it is shared with the engine/drawing/3D). **Critical** fields must come from the user (never defaulted → the clarifying question, in priority order). `CRITICAL_FIELDS = ("span_m", "steel_grade")`. Any override left `None` is **auto-sized** by the engine.
 
 | Field | Type | Critical | Default | Range / notes |
 |-------|------|----------|---------|---------------|
@@ -22,7 +22,7 @@ Designs an IR welded steel plate-girder bridge superstructure from a natural-lan
 | gauge | enum | no | `BG` | Broad Gauge |
 | deck_type | Literal[`deck`, `through`] | no | `deck` | deck-type (girders below deck) vs through-type (girders beside deck) |
 | number_of_girders | int | no | 2 | 2–6 |
-| steel_grade | Literal[`E250`, `E350`] | no | `E250` | structural steel grade (IS 2062 / IS 800) |
+| steel_grade | Literal[`E250`, `E350`] | **yes** | — | structural steel grade (IS 2062 / IS 800) |
 | web_depth_mm | float \| None | no | None → auto | override; thinner/shallower than sized → warning (under-design demo case) |
 | web_thickness_mm | float \| None | no | None → auto | as above |
 | flange_width_mm | float \| None | no | None → auto | as above |
@@ -57,7 +57,8 @@ Designs an IR welded steel plate-girder bridge superstructure from a natural-lan
 
 ## Success Criteria
 - [ ] "design a 30 m simply-supported deck-type welded plate girder, BG, 25t loading" completes a full run < 60 s with GA (DXF+SVG), 3D (GLB+STEP), calc sheet, a stress-summary panel and a proof-check verdict.
-- [ ] Missing critical param: "design a plate girder bridge, BG single line" → ONE question naming the **span**; answering "30 m" completes the design.
+- [ ] Missing critical params: "design a plate girder bridge, BG single line" → questions asked in order (**span** first, then **steel grade**); answering "30 m" then "E250" completes the design.
+- [ ] Missing only steel grade: "design a plate girder bridge, 30 m span, BG single line" → ONE question asking for the **steel grade**, naming the choices E250 or E350; answering "E350" completes the design.
 - [ ] The stress-summary panel shows max bending / max shear vs permissible and max deflection vs span/600, each with a pass/fail indicator matching the deterministic results.
 - [ ] Under-design: forcing `web_thickness_mm` (or `web_depth_mm`) below the sized value yields a FAIL row and a `return_for_revision` verdict naming the web; restoring it recovers the verdict.
 - [ ] `ga.dxf` opens via `ezdxf.readfile` with the principal dimensions (span, overall depth) read back; the SVG renders styled in the browser; `model.glb` is a valid non-empty GLB.

@@ -8,7 +8,7 @@ from components.plate_girder.checks import run_girder_checks
 from components.plate_girder.params import PlateGirderParams
 from components.plate_girder.sizing import size_girder
 
-AUTO = PlateGirderParams(span_m=24.0)
+AUTO = PlateGirderParams(span_m=24.0, steel_grade="E250")
 
 
 def test_auto_sized_girder_is_in_the_depth_band_and_passes_all_checks():
@@ -63,8 +63,8 @@ def test_live_load_uses_the_25t_eudl_and_cda_at_span_length():
 
 
 def test_longer_span_needs_a_deeper_section():
-    short = size_girder(PlateGirderParams(span_m=12.0)).geometry
-    long = size_girder(PlateGirderParams(span_m=40.0)).geometry
+    short = size_girder(PlateGirderParams(span_m=12.0, steel_grade="E250")).geometry
+    long = size_girder(PlateGirderParams(span_m=40.0, steel_grade="E250")).geometry
     assert long.web_depth_mm > short.web_depth_mm
     assert long.overall_depth_mm > short.overall_depth_mm
 
@@ -81,7 +81,7 @@ def test_thin_flange_override_fails_bending_the_under_design_case():
     """A deliberately thin/narrow flange -> the section modulus is too small ->
     the bending check FAILs (the under-design demo case)."""
     under = PlateGirderParams(
-        span_m=24.0, flange_thickness_mm=12.0, flange_width_mm=250.0
+        span_m=24.0, steel_grade="E250", flange_thickness_mm=12.0, flange_width_mm=250.0
     )
     result = size_girder(under)
     g = result.geometry

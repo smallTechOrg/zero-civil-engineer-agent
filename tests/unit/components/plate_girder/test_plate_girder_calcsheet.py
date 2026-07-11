@@ -9,7 +9,7 @@ from components.plate_girder.checks import run_girder_checks
 from components.plate_girder.params import PlateGirderParams
 from components.plate_girder.sizing import size_girder
 
-PARAMS = PlateGirderParams(span_m=24.0)
+PARAMS = PlateGirderParams(span_m=24.0, steel_grade="E250")
 
 
 def _compose(tmp_path: Path):
