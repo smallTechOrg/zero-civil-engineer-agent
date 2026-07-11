@@ -4,6 +4,8 @@ The LangGraph pipeline for one design run: NL prompt → scoped, **component-cla
 
 **The graph shape is fixed and component-agnostic.** From the Component-Registry expansion on, every engineering node **dispatches** to the selected Component Module via `registry.get(state["component_type"])` (see [architecture.md](architecture.md#component-registry--component-interface-the-platform-spine)) rather than importing culvert code directly. `understand` classifies the component type; `extract` uses the component's extraction schema; `analyse`/`check`/`draw`/`model3d`/`review` call the component's interface methods. Adding a component type changes **no node** — only the registry.
 
+**Run mode (`design` | `vet`) — the same graph, an INVERSE branch (Vetting Phase 1).** `state["mode"]` is `design` (default — byte-for-byte the existing flow) or `vet` (check-only review of a SUBMITTED design — see [capabilities/design-vetting.md](capabilities/design-vetting.md)). The vet branch reuses the SAME 10 nodes and topology; each affected node opens with a single `if state.get("mode") == "vet":` that delegates to a vet helper and otherwise runs the untouched design body. In vet mode: `understand` is **deterministic** (no LLM scope-classification of a synthesized label) — it validates the picked component `getattr(module, "supports_vetting", False)` (if false → a graceful `out_of_scope`-style "vetting for <type> is coming in a later phase") and emits a canned plan narration; `extract` runs **multimodal extraction** from the uploads (Gemini vision + deterministic `ezdxf` DXF parse) into the component's `vetting_extraction_schema()` — NO clarify (a vet has no submitter in the loop; a missing critical is a finding, not a question); `analyse` calls `build_submitted_geometry` (given values, **`size()` is never called**) then `analyse` for forces from the CLAIMED loading; `check` runs the existing checks over the given geometry; `draw`/`model3d` are labelled skip-stubs (the submitted drawing is the input); `review` runs `vet_check` (reusing `run_checks`/`run_checklist` + the DXF read-back against the SUBMITTED drawing) and writes `vetting_report.json` + `vetting_memo.md`; `finalize` persists `mode`, `vetting_json`, verdict. Only `box_culvert` advertises `supports_vetting=true` this phase; the graph gates vetting on `getattr(module, "supports_vetting", False)`, so the other 7 modules and the entire design flow are unchanged.
+
 ---
 
 ## Agent Architecture Pattern
@@ -20,6 +22,8 @@ Patterns used (from `harness/patterns/agentic-ai.md`): #5 Tool Use (deterministi
 |-------------|----------|----------|-----------|
 | `understand` | Gemini | `gemini-2.5-pro` | Binding intake constraint: one model for ALL agent steps |
 | `extract` | Gemini | `gemini-2.5-pro` | Structured output (Pydantic schema) — quality matters more than latency |
+| `extract` (vet mode) | Gemini | `gemini-2.5-pro` **vision** | Multimodal structured output over the uploaded PDF/image parts → the as-submitted extraction schema; a submitted DXF is parsed deterministically with `ezdxf` and takes precedence for geometry |
+| `review` (vet-memo narration only) | Gemini | `gemini-2.5-pro` | Narrates the vetting memo from deterministic findings; never grades |
 | `review` (memo narration only) | Gemini | `gemini-2.5-pro` | Narrates deterministic check results; never computes them |
 | `finalize` (refinement suggestions, Phase 3) | Gemini | `gemini-2.5-pro` | 2–3 suggestions from the run summary |
 
@@ -61,7 +65,9 @@ class AgentState(TypedDict, total=False):
     session_id: str                  # set by runner
 
     # Input
-    user_prompt: str                 # this turn's NL request
+    user_prompt: str                 # this turn's NL request (a short synthesized label for a vet run)
+    mode: str                        # "design" (default) | "vet" — vet = check-only review of a SUBMITTED design
+    upload_paths: list[str]          # vet mode: absolute paths of the uploaded submission files (data/uploads/<run_id>/)
     component_type: str              # registry type_id — set by `understand` (classify) or overridden by the API picker
     requested_component: str | None  # explicit picker choice from the API (overrides auto-detect when set)
     messages: list[dict]             # session history: [{role, content}] incl. prior clarification Q/A
@@ -89,6 +95,9 @@ class AgentState(TypedDict, total=False):
     checklist: list[dict]            # 12-item proof-check results (Phase 2)
     verdict: str | None              # "recommended_for_approval" | "return_for_revision" (Phase 2)
     type_summary: dict | None        # component-specific summary from module.type_summary (RW → stability; persisted to type_summary_json)
+    submitted: dict | None           # vet mode: the as-submitted extraction (geometry + claimed loading) — the CulvertParams-facing subset
+    reinforcement: list[dict]        # vet mode: extracted provided reinforcement per member
+    vetting: dict | None             # vet mode: the vetting report {verdict, summary, inputs[], findings[]} — persisted to vetting_json
     artefacts: list[dict]            # [{kind, filename}] as written
     suggestions: list[str]           # 2–3 refinement suggestions (Phase 3)
 
@@ -287,3 +296,5 @@ compiled_graph = graph.compile()               # no checkpointer — see Concurr
 ```
 
 Runner entry point (`src/graph/runner.py`): `start_design_run(session_id: str, prompt: str, preset_id: str | None) -> str` — creates the `design_runs` row, builds initial state (history + prior params from the session), launches the graph in a background thread, returns `run_id` immediately.
+
+Vetting entry point (`src/graph/runner.py`, Vetting Phase 1): `start_vetting_run(run_id: str, session_id: str, upload_paths: list[str], component_type: str, preset_id: str | None) -> str`. Because the upload directory is named by `run_id`, the endpoint (`src/api/vettings.py`) orchestrates the order: (1) `persistence.create_run_row(session_id, label, mode="vet")` → `run_id`; (2) the uploads helper (`src/vetting/uploads.py`) validates + writes the multipart files to `data/uploads/<run_id>/` → `upload_paths`; (3) `start_vetting_run(run_id, session_id, upload_paths, component_type, preset_id)` builds initial state with `mode="vet"`, `upload_paths`, `component_type` (the picked vetting-capable type; treated like `requested_component`) and a synthesized `user_prompt` label ("Vet submitted design: <filenames>"), launches the SAME compiled graph in a background thread, and returns `run_id`. `create_run_row` gains an optional `mode="design"` parameter (default keeps design behaviour unchanged).

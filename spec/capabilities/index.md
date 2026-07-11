@@ -22,6 +22,7 @@ One file per capability — each describes exactly one discrete thing the agent 
 | 3D Model (parametric solid → GLB viewer + STEP download) | [model-3d.md](model-3d.md) | 3 |
 | Design Library (audit trail browsing, run replay, presets) | [design-library.md](design-library.md) | 3 (records from 1) |
 | Session Refinement (turn memory, refinement regeneration, revise loop, suggestions) | [session-refinement.md](session-refinement.md) | 1 (memory/refine) / 3 (suggestions) |
+| **Design Vetting** (independent check-only compliance review of a SUBMITTED design — upload → extract as-submitted geometry/reinforcement/loading → CHECK-ONLY over the IRS engine → clause-cited vetting report + verdict; box culvert first) | [design-vetting.md](design-vetting.md) | Vetting 1 |
 
 ## Expansion-phase components (built — capability docs authored per phase)
 

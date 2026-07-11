@@ -4,7 +4,7 @@
 
 ## Storage Technology
 
-SQLite via SQLAlchemy 2.0 + Alembic (the skeleton's stack, extended in place). SQLite **is** production for this local single-user demo — tests run against the same driver. Artefact **files** live on disk under `data/artifacts/`; the DB stores their records. Migration `alembic/versions/0002_culvert_schema.py` creates the four tables below and drops the legacy skeleton `runs` table (the `transform_text` capability it served is replaced). Expansion-Phase-1 migration `alembic/versions/0003_component_platform.py` adds the `component_type` (default `box_culvert`, backfilled) and `type_summary_json` columns to `design_runs` — no table is dropped; the schema is otherwise component-agnostic (params/geometry are component-specific JSON, artefact `kind` is the shared fixed set).
+SQLite via SQLAlchemy 2.0 + Alembic (the skeleton's stack, extended in place). SQLite **is** production for this local single-user demo — tests run against the same driver. Artefact **files** live on disk under `data/artifacts/`; the DB stores their records. Migration `alembic/versions/0002_culvert_schema.py` creates the four tables below and drops the legacy skeleton `runs` table (the `transform_text` capability it served is replaced). Expansion-Phase-1 migration `alembic/versions/0003_component_platform.py` adds the `component_type` (default `box_culvert`, backfilled) and `type_summary_json` columns to `design_runs` — no table is dropped; the schema is otherwise component-agnostic (params/geometry are component-specific JSON, artefact `kind` is the shared fixed set). Vetting-Phase-1 migration `alembic/versions/0004_design_vetting.py` adds the `mode` (default `design`, backfilled) and `vetting_json` columns to `design_runs` — additive only, no table dropped; a vet run reuses the SAME `design_runs`/`artifacts` tables as a design run.
 
 > **Assumed:** `design_runs.params_json` stays a free-form JSON blob keyed by the component's `param_model`; it is not reshaped per component, so no per-component tables are needed. The `artifacts.kind` set is shared across components (a retaining wall simply omits kinds it doesn't emit).
 
@@ -32,6 +32,7 @@ One agent run = one turn: prompt in, artefacts + proof-check out. This is the au
 | id | TEXT (uuid) | yes | Primary key; also the artefact directory name |
 | session_id | TEXT FK → sessions.id | yes | |
 | component_type | TEXT | yes (default `box_culvert`) | Registry `type_id` this run designed (`box_culvert` \| `rcc_cantilever_retaining_wall` \| …). Added by the Expansion-Phase-1 migration `0003`; existing rows backfill to `box_culvert` |
+| mode | TEXT | yes (default `design`) | `design` (design a new component) \| `vet` (check-only vetting of a SUBMITTED design). Added by Vetting-Phase-1 migration `0004`; existing rows backfill to `design` |
 | prompt | TEXT | yes | The user's NL request for this turn |
 | status | TEXT | yes | `running` \| `needs_input` \| `out_of_scope` \| `completed` \| `failed` |
 | plan_text | TEXT | no | The streamed design plan (Understand) |
@@ -46,6 +47,7 @@ One agent run = one turn: prompt in, artefacts + proof-check out. This is the au
 | verdict | TEXT | no | `recommended_for_approval` \| `return_for_revision` (Phase 2) |
 | type_summary_json | TEXT (JSON) | no | Component's type-specific summary (culvert → member-check summary; retaining wall → stability summary {FoS overturning/sliding, max bearing, SBC}). Added by migration `0003` |
 | suggestions_json | TEXT (JSON) | no | 2–3 refinement suggestions (Phase 3) |
+| vetting_json | TEXT (JSON) | no | The full vetting report `{verdict, summary, inputs[], findings[]}` for a `mode="vet"` run (`null` for a design run). Added by migration `0004` |
 | prompt_tokens | INTEGER | yes (default 0) | Sum over the run's LLM calls |
 | completion_tokens | INTEGER | yes (default 0) | |
 | cost_usd | REAL | yes (default 0) | Computed from env-configured rates |
@@ -62,7 +64,7 @@ One generated file belonging to a run.
 |-------|------|----------|-------------|
 | id | TEXT (uuid) | yes | Primary key |
 | run_id | TEXT FK → design_runs.id | yes | |
-| kind | TEXT | yes | `ga_dxf` \| `ga_svg` \| `calc_sheet` \| `compliance` \| `proof_memo` \| `bmd_svg` \| `sfd_svg` \| `model_glb` \| `model_step` |
+| kind | TEXT | yes | `ga_dxf` \| `ga_svg` \| `calc_sheet` \| `compliance` \| `proof_memo` \| `bmd_svg` \| `sfd_svg` \| `model_glb` \| `model_step` \| `vetting_report` \| `vetting_memo` (last two: Vetting Phase 1) |
 | filename | TEXT | yes | Fixed name from the layout below |
 | mime | TEXT | yes | e.g. `image/vnd.dxf`, `image/svg+xml`, `model/gltf-binary`, `application/json`, `text/markdown` |
 | size_bytes | INTEGER | yes | |
@@ -125,19 +127,28 @@ Derived (engine output, not extracted): `BoxGeometry` — external dims, member 
 ```
 data/
 ├── agent.db                          # SQLite (existing skeleton path)
+├── uploads/                          # submitted-design inputs (Vetting Phase 1)
+│   └── <run_id>/
+│       └── <original filename(s)>    # the uploaded DXF/PDF/image — inputs, NOT served back
 └── artifacts/
     └── <run_id>/
-        ├── ga.dxf                    # genuine DXF (Phase 1)
+        ├── ga.dxf                    # genuine DXF (Phase 1; design mode only)
         ├── ga.svg                    # server-rendered from the same DXF (Phase 1)
-        ├── calc_sheet.json           # clause-cited sheet + drill-down trail (Phase 2)
-        ├── compliance.json           # 12-item matrix rows (Phase 2)
+        ├── calc_sheet.json           # clause-cited sheet + drill-down trail (Phase 2; also vet check-only)
+        ├── compliance.json           # 12-item matrix rows (Phase 2; also vet check-only)
         ├── proof_memo.md             # severity-graded memo (Phase 2)
-        ├── bmd.svg / sfd.svg         # FE cross-check diagrams (Phase 2)
+        ├── bmd.svg / sfd.svg         # FE cross-check diagrams (Phase 2; also vet)
         ├── model.glb                 # 3D view (Phase 3)
-        └── model.step                # CAD-openable download (Phase 3)
+        ├── model.step                # CAD-openable download (Phase 3)
+        ├── vetting_report.json       # per-check findings + verdict + provenance (Vetting Phase 1; vet mode)
+        └── vetting_memo.md           # PCC-style vetting memo (Vetting Phase 1; vet mode)
 ```
 
-Fixed filenames (whitelisted for serving — no user-controlled paths). `data/` is gitignored. `AGENT_ARTIFACTS_DIR` (default `data/artifacts`) configures the root.
+Fixed filenames (whitelisted for serving — no user-controlled paths). `data/` is gitignored. `AGENT_ARTIFACTS_DIR` (default `data/artifacts`) configures the artefact root; `AGENT_UPLOADS_DIR` (default `data/uploads`) configures the upload root. Uploaded files keep their original names under `data/uploads/<run_id>/` and are read as pipeline INPUTS only — they are never exposed through the artefacts whitelist.
+
+### Submitted reinforcement & claimed loading (Vetting Phase 1)
+
+The as-submitted extraction (`ComponentModule.vetting_extraction_schema()`) is a component-specific Pydantic model (culvert: `src/components/culvert/vetting.py`). For the box culvert it carries: (a) **geometry** — the `BoxGeometry`-facing fields as GIVEN (clear span/height/cushion, member thicknesses, haunch, barrel length); (b) **provided reinforcement** — per member `{member, bar_dia_mm, spacing_mm, area_mm2_per_m}` (NEW data, not in the design-flow `CulvertParams`/`BoxGeometry`); (c) **claimed loading & materials** — the `CulvertParams` non-critical fields the submitter states (loading standard, concrete/steel grade, clear cover, soil γ, φ, formation width, side slope); and (d) **provenance** — each field's `source` (`drawing` \| `calc` \| `assumed_default`). Nothing here reshapes the existing tables: the extraction is snapshotted into `params_json` (the `CulvertParams` subset) and `vetting_json` (reinforcement + provenance + findings). No per-vetting table is added.
 
 ## Data Lifecycle
 

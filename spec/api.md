@@ -13,7 +13,30 @@ Routers: `src/api/sessions.py`, `src/api/designs.py` (submit + snapshot + SSE + 
 ### `GET /api/components` *(Expansion Phase 1)*
 
 **Purpose:** the component catalogue for the picker/gallery — reads `registry.list_components()`.
-**Response `data`:** `{"components": [{"type_id", "display_name", "domain", "summary", "status", "codes": [...], "example_prompt"}]}` — `status` is `available` or `coming_soon`; the frontend greys `coming_soon` cards.
+**Response `data`:** `{"components": [{"type_id", "display_name", "domain", "summary", "status", "codes": [...], "example_prompt", "supports_vetting"}]}` — `status` is `available` or `coming_soon`; the frontend greys `coming_soon` cards. **`supports_vetting`** (bool, Vetting Phase 1) drives the picker's vetting affordance: `true` only for the box culvert this phase; `false` types show a labelled "vetting coming in a later phase" stub.
+
+### `POST /api/sessions/{session_id}/vettings` *(Vetting Phase 1)*
+
+**Purpose:** submit a SUBMITTED design for an independent check-only vetting. Returns immediately; the vet run executes in the background (same lifecycle as a design run — SSE/snapshot/artefacts endpoints below are reused with the returned `run_id`).
+
+**Request:** `multipart/form-data`
+| Part | Type | Required | Notes |
+|------|------|----------|-------|
+| `files` | one or more file parts | yes (≥1) | Accepted MIME: `application/pdf`, `image/vnd.dxf` / `application/dxf` / `image/x-dxf` / `application/octet-stream` for `.dxf`, `image/png`, `image/jpeg`. Max **25 MB** per file, **≤5** files. Stored under `data/uploads/<run_id>/`. |
+| `component_type` | string (registry `type_id`) | no | Defaults `box_culvert`; must be an available `supports_vetting=true` type, else `422 UNKNOWN_COMPONENT` / `422 VETTING_UNSUPPORTED`. |
+| `preset_id` | string | no | Fills only NON-critical check inputs (exposure minimums, permissible-stress grade rows); never the as-submitted geometry. |
+
+**Response `data`:** identical shape to a design submit — `{"run_id", "status": "running", "events_url": "/api/designs/{run_id}/events", "snapshot_url": "/api/designs/{run_id}"}`.
+
+**Error cases:**
+| Status | Code | Condition |
+|--------|------|-----------|
+| 404 | NOT_FOUND | Unknown session |
+| 409 | RUN_ACTIVE | A run in this session is still `running` |
+| 422 | NO_FILES | No file parts, or all empty |
+| 422 | UNSUPPORTED_MEDIA | A part's MIME/extension is not accepted |
+| 422 | FILE_TOO_LARGE | A part exceeds 25 MB (or > 5 files) |
+| 422 | UNKNOWN_COMPONENT / VETTING_UNSUPPORTED | `component_type` is not registered-available, or does not support vetting |
 
 ---
 
@@ -88,6 +111,7 @@ Routers: `src/api/sessions.py`, `src/api/designs.py` (submit + snapshot + SSE + 
 {
   "run_id": "...", "session_id": "...", "prompt": "...",
   "component_type": "rcc_cantilever_retaining_wall",
+  "mode": "design",
   "status": "completed",
   "plan_text": "...", "scope_message": null, "clarification_question": null,
   "type_summary": {"fos_overturning": 2.4, "fos_sliding": 1.7, "max_bearing_pressure_kn_m2": 165, "sbc_kn_m2": 200, "bearing_ok": true},
@@ -101,16 +125,17 @@ Routers: `src/api/sessions.py`, `src/api/designs.py` (submit + snapshot + SSE + 
   "suggestions": ["Increase cushion to 4 m", "..."],
   "artefacts": [{"kind": "ga_dxf", "filename": "ga.dxf", "url": ".../artifacts/ga.dxf", "size_bytes": 12345}],
   "tokens": {"prompt_tokens": 0, "completion_tokens": 0, "cost_usd": 0.0},
+  "vetting": null,
   "error_message": null,
   "started_at": "...", "completed_at": "...", "duration_ms": 41500
 }
 ```
 
-Phase-gated fields (`checks`, `checklist`, `verdict`, `suggestions`) are `null`/empty until their phase lands.
+Phase-gated fields (`checks`, `checklist`, `verdict`, `suggestions`) are `null`/empty until their phase lands. **`mode`** (`design` \| `vet`, Vetting Phase 1) and **`vetting`** (the full `vetting_report.json` payload, or `null` for a design run) are added by Vetting Phase 1 — for a design run `mode="design"` and `vetting=null`; for a vet run `mode="vet"`, `verdict` carries the accept/return verdict, and `vetting` carries `{verdict, summary, inputs:[{field,value,unit,source}], findings:[{id,title,clause,requirement,claimed,computed,limit,utilization_pct,status,severity,comment}]}`.
 
 ### `GET /api/designs/{run_id}/artifacts/{filename}`
 
-**Purpose:** fetch/download an artefact file. Filename must be one of the fixed set in [data.md](data.md#artefact-file-storage) (whitelist — no path traversal). Served with the artefact's MIME type; `ga.dxf`, `model.step`, `model.glb` get `Content-Disposition: attachment`; `ga.svg`, `bmd.svg`, `sfd.svg`, JSON and markdown are served inline.
+**Purpose:** fetch/download an artefact file. Filename must be one of the fixed set in [data.md](data.md#artefact-file-storage) (whitelist — no path traversal). Served with the artefact's MIME type; `ga.dxf`, `model.step`, `model.glb` get `Content-Disposition: attachment`; `ga.svg`, `bmd.svg`, `sfd.svg`, JSON and markdown are served inline. Vetting Phase 1 adds `vetting_report.json` (`application/json`, inline) and `vetting_memo.md` (`text/markdown`, inline) to the whitelist. Uploaded submission files are NOT served through this endpoint — they are inputs under `data/uploads/<run_id>/`, referenced by provenance in the report, never echoed back.
 
 **Error cases:** 404 unknown run / artefact not (yet) generated; 400 filename not in whitelist.
 
