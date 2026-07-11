@@ -40,7 +40,7 @@ def test_submit_with_valid_component_type_threads_requested_component(
     session_id = make_session_row()
     calls = {}
 
-    def fake_start(sess_id, prompt, preset_id=None, requested_component=None):
+    def fake_start(sess_id, prompt, preset_id=None, requested_component=None, parent_run_id=None):
         calls["requested_component"] = requested_component
         return "run-rc-1"
 

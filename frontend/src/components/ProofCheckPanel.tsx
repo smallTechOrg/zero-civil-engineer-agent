@@ -1,8 +1,9 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { ComplianceData, ComplianceSeverity, Verdict } from '@/lib/types'
+import type { ComplianceData, ComplianceItem, ComplianceSeverity, Verdict } from '@/lib/types'
 
 interface ProofCheckPanelProps {
   compliance: ComplianceData | null
@@ -18,17 +19,17 @@ interface ProofCheckPanelProps {
 }
 
 const SEVERITY_CHIP: Record<ComplianceSeverity, { label: string; className: string }> = {
-  PASS: { label: 'PASS', className: 'bg-emerald-100 text-emerald-800' },
-  OBSERVATION: { label: 'Observation', className: 'bg-amber-100 text-amber-900' },
-  NON_CONFORMITY_MINOR: { label: 'Non-conformity · minor', className: 'border border-red-300 bg-red-50 text-red-800' },
+  PASS: { label: 'PASS', className: 'border border-emerald-800/60 bg-emerald-950/50 text-emerald-300' },
+  OBSERVATION: { label: 'Observation', className: 'border border-amber-800/60 bg-amber-950/40 text-amber-300' },
+  NON_CONFORMITY_MINOR: { label: 'Non-conformity · minor', className: 'border border-red-800/60 bg-red-950/40 text-red-300' },
   NON_CONFORMITY_MAJOR: { label: 'NON-CONFORMITY · MAJOR', className: 'bg-red-600 text-white' },
 }
 
 const SEVERITY_ROW: Record<ComplianceSeverity, string> = {
-  PASS: 'border-l-4 border-emerald-200',
-  OBSERVATION: 'border-l-4 border-amber-400 bg-amber-50',
-  NON_CONFORMITY_MINOR: 'border-l-4 border-red-300 bg-red-50',
-  NON_CONFORMITY_MAJOR: 'border-l-4 border-red-600 bg-red-100',
+  PASS: 'border-l-4 border-emerald-800/60',
+  OBSERVATION: 'border-l-4 border-amber-500 bg-amber-950/20',
+  NON_CONFORMITY_MINOR: 'border-l-4 border-red-700 bg-red-950/20',
+  NON_CONFORMITY_MAJOR: 'border-l-4 border-red-500 bg-red-950/40',
 }
 
 function SeverityChip({ severity }: { severity: ComplianceSeverity }) {
@@ -40,129 +41,178 @@ function SeverityChip({ severity }: { severity: ComplianceSeverity }) {
   )
 }
 
+/** A numbered report section with a consistent heading rule. */
+function ReportSection({
+  numeral,
+  title,
+  aside,
+  children,
+}: {
+  numeral: string
+  title: string
+  aside?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-neutral-800 pb-1.5">
+        <h3 className="flex items-baseline gap-2 text-base font-bold text-neutral-100">
+          <span className="font-mono text-sm text-neutral-500">{numeral}</span>
+          {title}
+        </h3>
+        {aside}
+      </div>
+      {children}
+    </section>
+  )
+}
+
 function BlockSkeleton({ label }: { label: string }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-slate-200 bg-white p-6">
-      <div className="h-6 w-2/3 max-w-md rounded-lg bg-slate-100 motion-safe:animate-pulse" aria-hidden="true" />
-      <div className="h-6 w-full max-w-lg rounded-lg bg-slate-100 motion-safe:animate-pulse" aria-hidden="true" />
-      <p className="text-base text-slate-500">{label}</p>
+    <div className="flex flex-col items-center gap-3 rounded-xl border border-neutral-800 bg-neutral-900 p-6">
+      <div className="h-6 w-2/3 max-w-md rounded-lg bg-neutral-800 motion-safe:animate-pulse" aria-hidden="true" />
+      <div className="h-6 w-full max-w-lg rounded-lg bg-neutral-800 motion-safe:animate-pulse" aria-hidden="true" />
+      <p className="text-base text-neutral-400">{label}</p>
     </div>
   )
 }
 
-function VerdictBanner({ verdict }: { verdict: Verdict }) {
+/** Report masthead — frames the whole panel as a formal proof-check document. */
+function ReportHeader({ verdict, compliance }: { verdict: Verdict | null; compliance: ComplianceData | null }) {
   const approved = verdict === 'recommended_for_approval'
+  const feAgreement = compliance?.fe_agreement_pct ?? null
   return (
-    <div
-      data-testid="verdict-banner"
-      data-verdict={verdict}
-      role="status"
-      className={`rounded-xl border-2 px-5 py-4 ${
-        approved ? 'border-emerald-500 bg-emerald-50' : 'border-red-600 bg-red-50'
-      }`}
-    >
-      <p className={`text-2xl font-bold ${approved ? 'text-emerald-800' : 'text-red-800'}`}>
-        {approved ? 'Recommended for approval' : 'Return for revision'}
-      </p>
-      <p className={`mt-1 text-base ${approved ? 'text-emerald-900' : 'text-red-900'}`}>
-        Automatic proof-check verdict — 12-item IRS checklist with an independent FE cross-check.
-      </p>
-    </div>
+    <header className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-neutral-500">Engineering proof-check report</p>
+          <h2 className="mt-0.5 text-xl font-bold text-neutral-100">Independent design verification</h2>
+        </div>
+        <p className="text-sm text-neutral-500">
+          IRS checklist · independent FE cross-check
+          {feAgreement != null && <> · FE agreement {Number(feAgreement.toPrecision(3))}%</>}
+        </p>
+      </div>
+      {verdict && (
+        <div
+          data-testid="verdict-banner"
+          data-verdict={verdict}
+          role="status"
+          className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border-2 px-5 py-4 ${
+            approved ? 'border-emerald-500 bg-emerald-950/40' : 'border-red-600 bg-red-950/40'
+          }`}
+        >
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">Verdict</p>
+            <p className={`text-2xl font-bold ${approved ? 'text-emerald-300' : 'text-red-300'}`}>
+              {approved ? 'Recommended for approval' : 'Return for revision'}
+            </p>
+          </div>
+          <p className={`max-w-sm text-sm ${approved ? 'text-emerald-200/80' : 'text-red-200/80'}`}>
+            {approved
+              ? 'All checklist items cleared, with an independent FE cross-check confirming the closed-form analysis.'
+              : 'One or more non-conformities were found — see the compliance checklist below.'}
+          </p>
+        </div>
+      )}
+    </header>
+  )
+}
+
+/** Compact "10 pass · 1 observation · 1 non-conformity" tally for the checklist heading. */
+function ChecklistTally({ items }: { items: ComplianceItem[] }) {
+  const pass = items.filter(i => i.severity === 'PASS').length
+  const obs = items.filter(i => i.severity === 'OBSERVATION').length
+  const nc = items.filter(i => i.severity === 'NON_CONFORMITY_MINOR' || i.severity === 'NON_CONFORMITY_MAJOR').length
+  return (
+    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm font-medium">
+      <span className="text-emerald-300">{pass} pass</span>
+      {obs > 0 && <span className="text-amber-300">· {obs} observation{obs === 1 ? '' : 's'}</span>}
+      {nc > 0 && <span className="text-red-300">· {nc} non-conformit{nc === 1 ? 'y' : 'ies'}</span>}
+      <span className="text-neutral-500">· {items.length} checks</span>
+    </p>
   )
 }
 
 function ComplianceMatrix({ compliance }: { compliance: ComplianceData }) {
   return (
-    <section aria-label="Compliance matrix" className="overflow-hidden rounded-xl border border-slate-200">
-      <h3 className="border-b border-slate-200 bg-slate-100 px-4 py-2.5 text-base font-bold text-slate-800">
-        Compliance matrix
-      </h3>
-      <div className="overflow-x-auto">
-        <table data-testid="compliance-matrix" className="w-full border-collapse text-left">
-          <thead>
-            <tr className="border-b border-slate-200 text-sm font-semibold uppercase tracking-wide text-slate-500">
-              <th scope="col" className="px-3 py-2">
-                Clause
-              </th>
-              <th scope="col" className="px-3 py-2">
-                Requirement
-              </th>
-              <th scope="col" className="px-3 py-2">
-                Computed
-              </th>
-              <th scope="col" className="px-3 py-2">
-                Limit
-              </th>
-              <th scope="col" className="px-3 py-2">
-                Status
-              </th>
+    <div className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-950">
+      {/* table-fixed + colgroup: columns keep sane widths and cells WRAP instead of
+          forcing a horizontal scroll — reads as a report table at any panel width. */}
+      <table data-testid="compliance-matrix" className="w-full table-fixed border-collapse text-left">
+        <colgroup>
+          <col className="w-[28%]" />
+          <col className="w-[38%]" />
+          <col className="w-[20%]" />
+          <col className="w-[14%]" />
+        </colgroup>
+        <thead>
+          <tr className="border-b border-neutral-800 bg-neutral-900 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+            <th scope="col" className="px-3 py-2">Clause</th>
+            <th scope="col" className="px-3 py-2">Check &amp; requirement</th>
+            <th scope="col" className="px-3 py-2">Result</th>
+            <th scope="col" className="px-3 py-2">Status</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-neutral-800">
+          {compliance.items.map(item => (
+            <tr
+              key={item.item}
+              data-testid="compliance-row"
+              data-severity={item.severity}
+              className={SEVERITY_ROW[item.severity] ?? ''}
+            >
+              <td className="break-words px-3 py-3 align-top text-sm text-neutral-400">{item.clause}</td>
+              <td className="px-3 py-3 align-top">
+                <span className="block text-sm font-semibold leading-snug text-neutral-100">
+                  {item.item}. {item.title}
+                </span>
+                <span className="mt-1 block break-words text-sm leading-snug text-neutral-300">{item.requirement}</span>
+                {item.detail && (
+                  <span className="mt-1 block break-words text-xs leading-snug text-neutral-500">{item.detail}</span>
+                )}
+              </td>
+              <td className="px-3 py-3 align-top">
+                <span className="block break-words font-mono text-sm font-semibold text-neutral-100">{item.computed}</span>
+                <span className="mt-0.5 block break-words font-mono text-xs text-neutral-500">limit {item.limit}</span>
+              </td>
+              <td className="px-3 py-3 align-top">
+                <SeverityChip severity={item.severity} />
+              </td>
             </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {compliance.items.map(item => (
-              <tr
-                key={item.item}
-                data-testid="compliance-row"
-                data-severity={item.severity}
-                className={SEVERITY_ROW[item.severity] ?? ''}
-              >
-                <td className="whitespace-nowrap px-3 py-2.5 align-top text-sm text-slate-600">{item.clause}</td>
-                <td className="px-3 py-2.5 align-top">
-                  <span className="block text-base font-semibold leading-snug text-slate-900">
-                    {item.item}. {item.title}
-                  </span>
-                  <span className="mt-0.5 block text-sm leading-snug text-slate-600">{item.requirement}</span>
-                  {item.detail && <span className="mt-0.5 block text-sm leading-snug text-slate-500">{item.detail}</span>}
-                </td>
-                <td className="px-3 py-2.5 align-top font-mono text-sm text-slate-900">{item.computed}</td>
-                <td className="px-3 py-2.5 align-top font-mono text-sm text-slate-700">{item.limit}</td>
-                <td className="px-3 py-2.5 align-top">
-                  <SeverityChip severity={item.severity} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }
 
 function Diagrams({
   bmdSvg,
   sfdSvg,
-  feAgreementPct,
 }: {
   bmdSvg: string | null
   sfdSvg: string | null
-  feAgreementPct: number | null
 }) {
-  const host = 'rounded-lg border border-slate-200 bg-white p-2 [&_svg]:h-auto [&_svg]:w-full [&_svg]:max-w-full'
+  const host = 'rounded-lg border border-neutral-700 bg-white p-4 [&_svg]:h-auto [&_svg]:w-full [&_svg]:max-w-full'
   return (
-    <section aria-label="FE cross-check diagrams" className="space-y-3">
-      <h3 className="text-base font-bold text-slate-800">Independent FE cross-check</h3>
-      {feAgreementPct != null && (
-        <p data-testid="fe-agreement" className="text-base text-slate-700">
-          Independent FE re-solve agrees within {Number(feAgreementPct.toPrecision(3))}% of the closed-form analysis.
-        </p>
+    // Stacked so each figure spans the full width of its (left) column.
+    <div className="grid gap-6">
+      {bmdSvg && (
+        <figure data-testid="bmd-svg" className="space-y-1.5">
+          {/* Trusted markup: rendered server-side by our own FE cross-check. */}
+          <div className={host} dangerouslySetInnerHTML={{ __html: bmdSvg }} />
+          <figcaption className="text-sm text-neutral-400">Bending-moment diagram (independent FE re-solve)</figcaption>
+        </figure>
       )}
-      <div className="grid gap-4 md:grid-cols-2">
-        {bmdSvg && (
-          <figure data-testid="bmd-svg" className="space-y-1.5">
-            {/* Trusted markup: rendered server-side by our own FE cross-check. */}
-            <div className={host} dangerouslySetInnerHTML={{ __html: bmdSvg }} />
-            <figcaption className="text-sm text-slate-600">Bending-moment diagram (independent FE re-solve)</figcaption>
-          </figure>
-        )}
-        {sfdSvg && (
-          <figure data-testid="sfd-svg" className="space-y-1.5">
-            {/* Trusted markup: rendered server-side by our own FE cross-check. */}
-            <div className={host} dangerouslySetInnerHTML={{ __html: sfdSvg }} />
-            <figcaption className="text-sm text-slate-600">Shear-force diagram (independent FE re-solve)</figcaption>
-          </figure>
-        )}
-      </div>
-    </section>
+      {sfdSvg && (
+        <figure data-testid="sfd-svg" className="space-y-1.5">
+          {/* Trusted markup: rendered server-side by our own FE cross-check. */}
+          <div className={host} dangerouslySetInnerHTML={{ __html: sfdSvg }} />
+          <figcaption className="text-sm text-neutral-400">Shear-force diagram (independent FE re-solve)</figcaption>
+        </figure>
+      )}
+    </div>
   )
 }
 
@@ -184,14 +234,14 @@ export default function ProofCheckPanel({
       return (
         <div
           data-testid="proof-check-loading"
-          className="flex h-full min-h-[24rem] flex-col items-center justify-center gap-4 rounded-xl border border-slate-200 bg-white p-8"
+          className="flex h-full min-h-[24rem] flex-col items-center justify-center gap-4 rounded-xl border border-neutral-800 bg-neutral-900 p-8"
         >
           <div className="w-full max-w-xl space-y-3" aria-hidden="true">
-            <div className="h-10 w-full rounded-lg bg-slate-100 motion-safe:animate-pulse" />
-            <div className="h-5 w-5/6 rounded-lg bg-slate-100 motion-safe:animate-pulse" />
-            <div className="h-5 w-full rounded-lg bg-slate-100 motion-safe:animate-pulse" />
+            <div className="h-10 w-full rounded-lg bg-neutral-800 motion-safe:animate-pulse" />
+            <div className="h-5 w-5/6 rounded-lg bg-neutral-800 motion-safe:animate-pulse" />
+            <div className="h-5 w-full rounded-lg bg-neutral-800 motion-safe:animate-pulse" />
           </div>
-          <p className="text-lg text-slate-600">
+          <p className="text-lg text-neutral-400">
             {reviewActive
               ? 'Running the independent proof-check…'
               : 'The proof-check runs automatically once the design and drawing are complete.'}
@@ -201,8 +251,8 @@ export default function ProofCheckPanel({
     }
     if (runFailed) {
       return (
-        <div className="flex h-full min-h-[24rem] items-center justify-center rounded-xl border border-slate-200 bg-white p-8">
-          <p className="max-w-md text-center text-lg leading-relaxed text-slate-600">
+        <div className="flex h-full min-h-[24rem] items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 p-8">
+          <p className="max-w-md text-center text-lg leading-relaxed text-neutral-400">
             The run failed before the proof-check completed — the details are in the red banner above. Fix the request
             and try again.
           </p>
@@ -210,8 +260,8 @@ export default function ProofCheckPanel({
       )
     }
     return (
-      <div className="flex h-full min-h-[24rem] items-center justify-center rounded-xl border border-slate-200 bg-white p-8">
-        <p className="max-w-md text-center text-lg leading-relaxed text-slate-600">
+      <div className="flex h-full min-h-[24rem] items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 p-8">
+        <p className="max-w-md text-center text-lg leading-relaxed text-neutral-400">
           {hasRun
             ? 'This run has no proof-check — select a completed design in the session panel, or run a new design.'
             : 'Every completed design is proof-checked automatically — verdict, severity-graded memo, 12-item compliance matrix and independent FE cross-check appear here.'}
@@ -220,37 +270,66 @@ export default function ProofCheckPanel({
     )
   }
 
+  // Each section stays whole within a single column. Deterministic split so the
+  // reading order is: Assessment (1) + FE cross-check (3) down the LEFT column,
+  // Compliance checklist (2) down the RIGHT column. The verdict header spans the
+  // full width across the top. Stacks to one column below lg.
+  const assessmentSection = memoMarkdown ? (
+    <ReportSection numeral="1" title="Assessment">
+      <div
+        data-testid="memo"
+        aria-label="Proof-check memo"
+        className="text-[0.95rem] leading-relaxed text-neutral-200 [&_a]:text-indigo-300 [&_a]:underline [&_code]:font-mono [&_code]:rounded [&_code]:bg-neutral-950 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-sm [&_code]:text-neutral-100 [&_h1]:text-xl [&_h1]:font-bold [&_h1]:text-neutral-100 [&_h2]:mt-5 [&_h2]:text-lg [&_h2]:font-bold [&_h2]:text-neutral-100 [&_h3]:mt-4 [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-neutral-100 [&_li]:mt-1 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mt-2.5 [&_strong]:font-semibold [&_strong]:text-neutral-100 [&_table]:mt-3 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-neutral-700 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-neutral-700 [&_th]:bg-neutral-950 [&_th]:px-2 [&_th]:py-1 [&_th]:text-neutral-100 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6"
+      >
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{memoMarkdown}</ReactMarkdown>
+      </div>
+    </ReportSection>
+  ) : (
+    isRunning && <BlockSkeleton label="Drafting the proof-check memo…" />
+  )
+
+  const feSection =
+    bmdSvg || sfdSvg ? (
+      <ReportSection
+        numeral="3"
+        title="Independent FE cross-check"
+        aside={
+          compliance?.fe_agreement_pct != null ? (
+            <p data-testid="fe-agreement" className="text-sm text-neutral-400">
+              Agrees within {Number(compliance.fe_agreement_pct.toPrecision(3))}% of the closed-form analysis
+            </p>
+          ) : undefined
+        }
+      >
+        <Diagrams bmdSvg={bmdSvg} sfdSvg={sfdSvg} />
+      </ReportSection>
+    ) : (
+      isRunning && <BlockSkeleton label="Re-solving the frame with the independent FE model…" />
+    )
+
+  const complianceSection = compliance ? (
+    <ReportSection numeral="2" title="Compliance checklist" aside={<ChecklistTally items={compliance.items} />}>
+      <ComplianceMatrix compliance={compliance} />
+    </ReportSection>
+  ) : (
+    isRunning && <BlockSkeleton label="Evaluating the 12-item checklist…" />
+  )
+
   return (
-    <div data-testid="proof-check-content" className="space-y-5">
+    <article data-testid="proof-check-content" className="w-full space-y-8">
       {verdict ? (
-        <VerdictBanner verdict={verdict} />
+        <ReportHeader verdict={verdict} compliance={compliance} />
       ) : (
         isRunning && <BlockSkeleton label="Computing the verdict…" />
       )}
 
-      {memoMarkdown ? (
-        <article
-          data-testid="memo"
-          aria-label="Proof-check memo"
-          className="rounded-xl border border-slate-200 bg-white p-5 text-base leading-relaxed text-slate-800 [&_code]:font-mono [&_code]:text-sm [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:mt-4 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mt-3 [&_h3]:text-lg [&_h3]:font-semibold [&_li]:mt-1 [&_ol]:mt-2 [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mt-2 [&_strong]:font-semibold [&_table]:mt-3 [&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:border-slate-300 [&_td]:px-2 [&_td]:py-1 [&_th]:border [&_th]:border-slate-300 [&_th]:px-2 [&_th]:py-1 [&_ul]:mt-2 [&_ul]:list-disc [&_ul]:pl-6"
-        >
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{memoMarkdown}</ReactMarkdown>
-        </article>
-      ) : (
-        isRunning && <BlockSkeleton label="Drafting the proof-check memo…" />
-      )}
-
-      {compliance ? (
-        <ComplianceMatrix compliance={compliance} />
-      ) : (
-        isRunning && <BlockSkeleton label="Evaluating the 12-item checklist…" />
-      )}
-
-      {bmdSvg || sfdSvg ? (
-        <Diagrams bmdSvg={bmdSvg} sfdSvg={sfdSvg} feAgreementPct={compliance?.fe_agreement_pct ?? null} />
-      ) : (
-        isRunning && <BlockSkeleton label="Re-solving the frame with the independent FE model…" />
-      )}
-    </div>
+      <div className="grid gap-8 lg:grid-cols-2 lg:items-start">
+        <div className="space-y-8">
+          {assessmentSection}
+          {feSection}
+        </div>
+        <div className="space-y-8">{complianceSection}</div>
+      </div>
+    </article>
   )
 }

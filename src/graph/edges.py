@@ -16,7 +16,9 @@ def route_understand(state: AgentState) -> str:
 def route_extract(state: AgentState) -> str:
     if state.get("error"):
         return "handle_error"
-    if state.get("missing_critical"):
+    # Missing critical fields OR extracted-but-invalid values both become a
+    # clarification the user can answer/refine — never a hard failure.
+    if state.get("missing_critical") or state.get("invalid_fields"):
         return "clarify"
     return "analyse"
 

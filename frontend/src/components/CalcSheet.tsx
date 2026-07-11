@@ -20,13 +20,13 @@ function formatValue(value: number | string | null | undefined): string {
 }
 
 const SOURCE_BADGE: Record<string, { label: string; className: string }> = {
-  user: { label: 'User', className: 'bg-indigo-100 text-indigo-800' },
-  preset: { label: 'Preset', className: 'bg-sky-100 text-sky-800' },
-  engine_default: { label: 'Engine default', className: 'bg-slate-200 text-slate-700' },
+  user: { label: 'User', className: 'border border-indigo-800/60 bg-indigo-950/50 text-indigo-300' },
+  preset: { label: 'Preset', className: 'border border-sky-800/60 bg-sky-950/50 text-sky-300' },
+  engine_default: { label: 'Engine default', className: 'border border-neutral-700 bg-neutral-800 text-neutral-300' },
 }
 
 function SourceBadge({ source }: { source: string }) {
-  const badge = SOURCE_BADGE[source] ?? { label: source, className: 'bg-slate-200 text-slate-700' }
+  const badge = SOURCE_BADGE[source] ?? { label: source, className: 'border border-neutral-700 bg-neutral-800 text-neutral-300' }
   return (
     <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${badge.className}`}>
       {badge.label}
@@ -38,29 +38,29 @@ function AssumptionsBlock({ assumptions }: { assumptions: Assumption[] }) {
   return (
     <section
       data-testid="calc-assumptions"
-      className="rounded-xl border border-slate-200 bg-slate-50 p-4"
+      className="rounded-xl border border-neutral-800 bg-neutral-900 p-4"
       aria-label="Assumptions"
     >
-      <h3 className="text-base font-bold uppercase tracking-wide text-slate-700">Assumptions</h3>
-      <p className="mt-1 text-sm text-slate-500">
+      <h3 className="text-base font-bold uppercase tracking-wide text-neutral-200">Assumptions</h3>
+      <p className="mt-1 text-sm text-neutral-400">
         Every value the engine did not receive from you, with its source — nothing implicit.
       </p>
       {assumptions.length === 0 ? (
-        <p className="mt-3 text-base text-slate-600">
+        <p className="mt-3 text-base text-neutral-300">
           No assumed values — every parameter was supplied in the request.
         </p>
       ) : (
-        <ul className="mt-3 divide-y divide-slate-200">
+        <ul className="mt-3 divide-y divide-neutral-800">
           {assumptions.map((a, i) => (
             <li
               key={`${a.field}-${i}`}
               data-testid="calc-assumption"
               className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2"
             >
-              <span className="font-mono text-sm text-slate-600">{a.field}</span>
-              <span className="text-base font-semibold text-slate-900">{a.value}</span>
+              <span className="font-mono text-sm text-neutral-400">{a.field}</span>
+              <span className="text-base font-semibold text-neutral-100">{a.value}</span>
               <SourceBadge source={a.source} />
-              {a.note && <span className="text-sm text-slate-500">{a.note}</span>}
+              {a.note && <span className="text-sm text-neutral-400">{a.note}</span>}
             </li>
           ))}
         </ul>
@@ -93,9 +93,9 @@ function TrailInputRow({
   if (!isRefInput(input)) {
     return (
       <li data-testid="calc-trail-input" className="flex flex-wrap items-baseline gap-x-2">
-        <span className="font-mono text-sm font-semibold text-slate-700">{name}</span>
-        <span className="text-sm text-slate-500">=</span>
-        <span className="font-mono text-sm text-slate-900">{formatValue(input)}</span>
+        <span className="font-mono text-sm font-semibold text-neutral-200">{name}</span>
+        <span className="text-sm text-neutral-500">=</span>
+        <span className="font-mono text-sm text-neutral-100">{formatValue(input)}</span>
       </li>
     )
   }
@@ -107,22 +107,22 @@ function TrailInputRow({
   return (
     <li data-testid="calc-trail-input" className="space-y-2">
       <span className="flex flex-wrap items-baseline gap-x-2">
-        <span className="font-mono text-sm font-semibold text-slate-700">{name}</span>
-        <span className="text-sm text-slate-500">=</span>
-        <span className="font-mono text-sm text-slate-900">{formatValue(input.value)}</span>
+        <span className="font-mono text-sm font-semibold text-neutral-200">{name}</span>
+        <span className="text-sm text-neutral-500">=</span>
+        <span className="font-mono text-sm text-neutral-100">{formatValue(input.value)}</span>
         {expandable ? (
           <button
             type="button"
             data-testid="calc-trail-ref"
             aria-expanded={open}
             onClick={() => setOpen(v => !v)}
-            className="inline-flex items-center gap-1 rounded-md border border-indigo-200 bg-white px-2 py-0.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+            className="inline-flex items-center gap-1 rounded-md border border-indigo-800/60 bg-indigo-950/40 px-2 py-0.5 text-xs font-semibold text-indigo-300 hover:bg-indigo-900/40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400"
           >
             <span aria-hidden="true">{open ? '▾' : '▸'}</span>
             from {input.ref}
           </button>
         ) : (
-          <span className="text-xs font-medium text-slate-500">
+          <span className="text-xs font-medium text-neutral-500">
             from {input.ref}
             {circular ? ' (already expanded above)' : ' (step not in trail)'}
           </span>
@@ -146,13 +146,13 @@ function TrailStepView({
   ancestors: ReadonlySet<string>
 }) {
   return (
-    <div data-testid="calc-trail-step" className="space-y-2 rounded-lg border border-indigo-200 bg-indigo-50/60 p-3">
-      <p className="text-sm text-slate-600">
-        <span className="font-mono font-semibold text-indigo-800">{step.step_id}</span>
+    <div data-testid="calc-trail-step" className="space-y-2 rounded-lg border border-indigo-900/50 bg-indigo-950/30 p-3">
+      <p className="text-sm text-neutral-300">
+        <span className="font-mono font-semibold text-indigo-300">{step.step_id}</span>
         <span aria-hidden="true"> · </span>
         {step.description}
       </p>
-      <p data-testid="calc-trail-formula" className="rounded-md bg-white px-3 py-2 font-mono text-sm text-slate-900">
+      <p data-testid="calc-trail-formula" className="rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 font-mono text-sm text-neutral-100">
         {step.formula}
       </p>
       <ul data-testid="calc-trail-inputs" className="space-y-1.5 pl-1" aria-label="Substituted inputs">
@@ -161,12 +161,12 @@ function TrailStepView({
         ))}
       </ul>
       <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
-        <span className="text-slate-500">=</span>
-        <span className="font-mono font-semibold text-slate-900">
+        <span className="text-neutral-500">=</span>
+        <span className="font-mono font-semibold text-neutral-100">
           {formatValue(step.value)}
           {step.unit ? ` ${step.unit}` : ''}
         </span>
-        {step.citation && <cite className="not-italic text-xs text-slate-500">{step.citation}</cite>}
+        {step.citation && <cite className="not-italic text-xs text-neutral-400">{step.citation}</cite>}
       </p>
     </div>
   )
@@ -181,7 +181,7 @@ function StatusChip({ status }: { status: 'PASS' | 'FAIL' }) {
     )
   }
   return (
-    <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-emerald-800">
+    <span className="shrink-0 rounded-full border border-emerald-800/60 bg-emerald-950/50 px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide text-emerald-300">
       PASS
     </span>
   )
@@ -196,19 +196,19 @@ function CalcRow({ line, trailById }: { line: CalcLine; trailById: Map<string, T
   const rowBody = (
     <span className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-1">
       {expandable && (
-        <span aria-hidden="true" className="w-4 shrink-0 text-sm text-indigo-600">
+        <span aria-hidden="true" className="w-4 shrink-0 text-sm text-indigo-400">
           {expanded ? '▾' : '▸'}
         </span>
       )}
-      <span className={`min-w-0 flex-1 text-base leading-snug ${failed ? 'font-semibold text-red-900' : 'text-slate-800'}`}>
+      <span className={`min-w-0 flex-1 text-base leading-snug ${failed ? 'font-semibold text-red-300' : 'text-neutral-200'}`}>
         {line.description}
       </span>
-      <span className="whitespace-nowrap font-mono text-base font-semibold text-slate-900">
+      <span className="whitespace-nowrap font-mono text-base font-semibold text-neutral-100">
         {formatValue(line.value)}
         {line.unit ? ` ${line.unit}` : ''}
       </span>
       {line.citation && (
-        <cite data-testid="calc-citation" className="whitespace-nowrap not-italic text-sm text-slate-500">
+        <cite data-testid="calc-citation" className="whitespace-nowrap not-italic text-sm text-neutral-400">
           {line.citation}
         </cite>
       )}
@@ -222,9 +222,9 @@ function CalcRow({ line, trailById }: { line: CalcLine; trailById: Map<string, T
       data-status={line.status ?? ''}
       className={
         failed
-          ? 'border-l-4 border-red-600 bg-red-50'
+          ? 'border-l-4 border-red-500 bg-red-950/30'
           : line.status === 'PASS'
-            ? 'border-l-4 border-emerald-200'
+            ? 'border-l-4 border-emerald-800/60'
             : 'border-l-4 border-transparent'
       }
     >
@@ -235,7 +235,7 @@ function CalcRow({ line, trailById }: { line: CalcLine; trailById: Map<string, T
           aria-expanded={expanded}
           title="Expand the calc trail — formula and substituted inputs"
           onClick={() => setExpanded(v => !v)}
-          className="w-full px-3 py-2.5 text-left hover:bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-600"
+          className="w-full px-3 py-2.5 text-left hover:bg-neutral-800/50 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-indigo-400"
         >
           {rowBody}
         </button>
@@ -257,15 +257,15 @@ export default function CalcSheet({ sheet, isRunning, composing, runFailed, hasR
       return (
         <div
           data-testid="calc-sheet-loading"
-          className="flex h-full min-h-[24rem] flex-col items-center justify-center gap-4 rounded-xl border border-slate-200 bg-white p-8"
+          className="flex h-full min-h-[24rem] flex-col items-center justify-center gap-4 rounded-xl border border-neutral-800 bg-neutral-900 p-8"
         >
           <div className="w-full max-w-xl space-y-3" aria-hidden="true">
-            <div className="h-8 w-2/3 rounded-lg bg-slate-100 motion-safe:animate-pulse" />
-            <div className="h-5 w-full rounded-lg bg-slate-100 motion-safe:animate-pulse" />
-            <div className="h-5 w-5/6 rounded-lg bg-slate-100 motion-safe:animate-pulse" />
-            <div className="h-5 w-full rounded-lg bg-slate-100 motion-safe:animate-pulse" />
+            <div className="h-8 w-2/3 rounded-lg bg-neutral-800 motion-safe:animate-pulse" />
+            <div className="h-5 w-full rounded-lg bg-neutral-800 motion-safe:animate-pulse" />
+            <div className="h-5 w-5/6 rounded-lg bg-neutral-800 motion-safe:animate-pulse" />
+            <div className="h-5 w-full rounded-lg bg-neutral-800 motion-safe:animate-pulse" />
           </div>
-          <p className="text-lg text-slate-600">
+          <p className="text-lg text-neutral-400">
             {composing
               ? 'Composing the calculation sheet…'
               : 'The clause-cited calculation sheet appears here as soon as the load checks complete.'}
@@ -275,8 +275,8 @@ export default function CalcSheet({ sheet, isRunning, composing, runFailed, hasR
     }
     if (runFailed) {
       return (
-        <div className="flex h-full min-h-[24rem] items-center justify-center rounded-xl border border-slate-200 bg-white p-8">
-          <p className="max-w-md text-center text-lg leading-relaxed text-slate-600">
+        <div className="flex h-full min-h-[24rem] items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 p-8">
+          <p className="max-w-md text-center text-lg leading-relaxed text-neutral-400">
             The run failed before the calculation sheet was composed — the details are in the red banner above. Fix
             the request and try again.
           </p>
@@ -284,8 +284,8 @@ export default function CalcSheet({ sheet, isRunning, composing, runFailed, hasR
       )
     }
     return (
-      <div className="flex h-full min-h-[24rem] items-center justify-center rounded-xl border border-slate-200 bg-white p-8">
-        <p className="max-w-md text-center text-lg leading-relaxed text-slate-600">
+      <div className="flex h-full min-h-[24rem] items-center justify-center rounded-xl border border-neutral-800 bg-neutral-900 p-8">
+        <p className="max-w-md text-center text-lg leading-relaxed text-neutral-400">
           {hasRun
             ? 'This run produced no calculation sheet — select a completed design in the session panel, or run a new design.'
             : 'The clause-cited calculation sheet appears here — design basis, EUDL + CDA loading, analysis and member checks, with drill-down to every formula.'}
@@ -307,7 +307,7 @@ export default function CalcSheet({ sheet, isRunning, composing, runFailed, hasR
               key={i}
               data-testid="calc-warning"
               role="status"
-              className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-base text-amber-900"
+              className="rounded-lg border border-amber-800/60 bg-amber-950/30 px-4 py-3 text-base text-amber-200"
             >
               <span className="font-semibold">Flagged: </span>
               {message}
@@ -322,15 +322,15 @@ export default function CalcSheet({ sheet, isRunning, composing, runFailed, hasR
           data-testid="calc-section"
           data-section-id={section.id}
           aria-label={section.title}
-          className="overflow-hidden rounded-xl border border-slate-200"
+          className="overflow-hidden rounded-xl border border-neutral-800"
         >
-          <h3 className="border-b border-slate-200 bg-slate-100 px-4 py-2.5 text-base font-bold text-slate-800">
+          <h3 className="border-b border-neutral-800 bg-neutral-900 px-4 py-2.5 text-base font-bold text-neutral-100">
             {section.title}
           </h3>
           {section.lines.length === 0 ? (
-            <p className="px-4 py-3 text-base text-slate-500">No lines in this section for this design.</p>
+            <p className="px-4 py-3 text-base text-neutral-400">No lines in this section for this design.</p>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-neutral-800">
               {section.lines.map((line, i) => (
                 <CalcRow key={`${section.id}-${i}`} line={line} trailById={trailById} />
               ))}

@@ -61,12 +61,12 @@ export default function StepTracker({ steps, runId, elapsedMs, isRunning }: Step
                 <span
                   className={`text-base font-semibold ${
                     step.status === 'active'
-                      ? 'text-indigo-700 motion-safe:animate-pulse'
+                      ? 'text-indigo-300 motion-safe:animate-pulse'
                       : step.status === 'done'
-                        ? 'text-slate-900'
+                        ? 'text-neutral-100'
                         : step.status === 'failed'
-                          ? 'text-red-700'
-                          : 'text-slate-500'
+                          ? 'text-red-400'
+                          : 'text-neutral-500'
                   }`}
                 >
                   {name}

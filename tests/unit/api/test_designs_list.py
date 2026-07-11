@@ -37,9 +37,12 @@ def test_list_designs_newest_first_with_summary(api_client, make_session_row, ma
     assert oldest["duration_ms"] == 30000
     assert oldest["verdict"] is None
     assert set(newest.keys()) == {
-        "run_id", "session_id", "prompt", "status", "verdict",
+        "run_id", "session_id", "root_run_id", "prompt", "component_type", "status", "verdict",
         "params_summary", "cost_usd", "started_at", "duration_ms",
     }
+    # A plain (non-refinement) run is its own record root → root_run_id is NULL.
+    assert newest["root_run_id"] is None
+    assert oldest["root_run_id"] is None
 
 
 def test_list_designs_session_filter(api_client, make_session_row, make_run_row, utc):

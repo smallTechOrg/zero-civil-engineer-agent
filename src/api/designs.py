@@ -55,11 +55,16 @@ def _start_design_run(
     prompt: str,
     preset_id: str | None = None,
     requested_component: str | None = None,
+    parent_run_id: str | None = None,
 ) -> str:
     from graph.runner import start_design_run
 
     return start_design_run(
-        session_id, prompt, preset_id=preset_id, requested_component=requested_component
+        session_id,
+        prompt,
+        preset_id=preset_id,
+        requested_component=requested_component,
+        parent_run_id=parent_run_id,
     )
 
 
@@ -92,6 +97,7 @@ def _snapshot_from_row(row: DesignRunRow, artifact_rows: list[ArtifactRow]) -> R
     return RunSnapshot(
         run_id=row.id,
         session_id=row.session_id,
+        root_run_id=row.root_run_id,
         prompt=row.prompt,
         component_type=row.component_type,
         status=row.status,
@@ -177,13 +183,19 @@ def submit_design(
     # Persist before the background run thread opens its own DB session.
     session.commit()
 
-    # Keep the legacy 3-arg call when no picker choice is present (auto-detect);
-    # only thread requested_component through when the picker forces a type.
-    if requested_component is None:
+    # Keep the legacy 3-arg call when neither a picker choice nor a refine parent
+    # is present (auto-detect, new record); thread requested_component and/or
+    # parent_run_id through when either is supplied. An unknown parent_run_id is
+    # resolved gracefully in create_run_row (treated as a new record), never a 500.
+    if requested_component is None and req.parent_run_id is None:
         run_id = _start_design_run(session_id, prompt, req.preset_id)
     else:
         run_id = _start_design_run(
-            session_id, prompt, req.preset_id, requested_component=requested_component
+            session_id,
+            prompt,
+            req.preset_id,
+            requested_component=requested_component,
+            parent_run_id=req.parent_run_id,
         )
     return ok(
         DesignSubmitted(
@@ -224,7 +236,9 @@ def list_designs(
         RunListItem(
             run_id=row.id,
             session_id=row.session_id,
+            root_run_id=row.root_run_id,
             prompt=row.prompt,
+            component_type=row.component_type,
             status=row.status,
             verdict=row.verdict,
             params_summary=_params_summary(_loads(row.params_json, None), row.component_type),

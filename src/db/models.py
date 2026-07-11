@@ -48,6 +48,13 @@ class DesignRunRow(Base):
     session_id: Mapped[str] = mapped_column(
         Text, ForeignKey("sessions.id"), nullable=False
     )
+    # Refinement lineage: NULL means this run is its own record root (an original /
+    # new design). A refinement stores the root run_id of the record it belongs to,
+    # so grouping a record's versions is an O(1) lookup by root. Version order is
+    # derived by ordering a root-group on started_at — no parent/version columns.
+    root_run_id: Mapped[str | None] = mapped_column(
+        Text, ForeignKey("design_runs.id"), nullable=True
+    )
     component_type: Mapped[str] = mapped_column(
         Text, nullable=False, default="box_culvert"
     )

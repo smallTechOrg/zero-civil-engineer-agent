@@ -121,6 +121,18 @@ class ComponentModule(Protocol):
 
 The box culvert becomes `src/components/culvert/module.py` — a thin `BoxCulvertComponent` whose methods delegate to the **unchanged** `src/engine`, `src/drawing`, `src/model3d`, `src/proofcheck` functions. All existing culvert unit/validation/integration/E2E tests stay green; the refactor only moves the dispatch decision from hard-coded node bodies into `registry.get(component_type)`.
 
+### UX redesign (Phase 4 Redesign) — IA-only, no backend rearchitecture
+
+The Phase 4 Redesign (see [roadmap.md](roadmap.md#phases-of-development) and [ui.md](ui.md)) reorganises the SAME frontend elements into a lifecycle-oriented, extensible information architecture (design-as-record, a Define→Design→Review Stage Rail with visibly-coming Simulate/Test/Approve stubs, a prompt-first + gallery entry, and a per-design Overview replacing the always-on generic "Stability" tab). It is **primarily a frontend effort**; the backend, agent graph, Component Registry, API routes, artefact set and DB schema are **unchanged**. Specifically:
+
+- **Design-records status chips** (Draft / Reviewed ✓ / Needs revision ✗) are **derived client-side** from the existing `design_runs.status` + `design_runs.verdict` (both already persisted and already returned by `GET /api/designs` and `GET /api/designs/{run_id}`). **No new status column is added** — the honest, minimal change is a UI derivation, not a schema migration.
+- **Overview key numbers** are rendered generically from the existing `type_summary` (persisted as `design_runs.type_summary_json`, surfaced in the snapshot) — the same data that drove the old Stability panel, now the design's landing dashboard.
+- **Code/standards traceability** at design level reuses the component's declared `codes` (from `registry.list_components()` / `GET /api/components`) plus the clause citations already inside `calc_sheet.json` / `compliance.json`.
+- **Token/cost per-run vs session split** reuses the existing SSE `tokens` event (`cost_usd` + `session_total_cost_usd`); the redesign only presents the two totals distinctly.
+- **Projects grouping** is a pure frontend visual stub ("coming") — no `projects` table, no API, not built this version.
+
+No new endpoint, migration, graph node, or Python dependency is introduced by the redesign. If a later redesign phase needs records-list filtering beyond today's `session_id`/`limit`/`offset`, it extends `GET /api/designs` query params only (the same slot already noted for `p3-library-api`).
+
 ## Data Flow
 
 1. **Trigger:** user submits a natural-language prompt (`POST /api/sessions/{id}/designs`). The API creates a `design_runs` row (status `running`), starts the LangGraph run in a background thread, and returns `run_id` immediately.

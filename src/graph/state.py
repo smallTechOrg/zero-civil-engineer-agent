@@ -24,6 +24,7 @@ class AgentState(TypedDict, total=False):
     # Extract
     params: dict | None              # validated CulvertParams (merged)
     missing_critical: list[str]
+    invalid_fields: list[str]        # extracted but out-of-range / invalid-enum → clarify (not fail)
     warnings: list[str]
     clarification_question: str | None
 
