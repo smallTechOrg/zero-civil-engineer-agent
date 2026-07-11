@@ -111,6 +111,51 @@ const COMPARISON_DESCRIPTORS: ComparisonDescriptor[] = [
     okKey: 'shear_ok',
     passWhen: 'lte',
   },
+  // --- Mechanical domain (Expansion Phase 3) ------------------------------
+  // Structural steel member — utilisation_summary adds axial + weld rows on top
+  // of the shared bending + shear rows above. Rolling-stock member reuses those
+  // shared bending + shear rows (its governing_load_case renders via fallback).
+  {
+    key: 'axial',
+    label: 'Max axial stress vs permissible',
+    valueKey: 'max_axial_stress_mpa',
+    limitKey: 'permissible_axial_stress_mpa',
+    limitLabel: 'Permissible',
+    unit: 'MPa',
+    okKey: 'axial_ok',
+    passWhen: 'lte',
+  },
+  {
+    key: 'weld',
+    label: 'Weld stress vs permissible',
+    valueKey: 'weld_stress_mpa',
+    limitKey: 'permissible_weld_stress_mpa',
+    limitLabel: 'Permissible',
+    unit: 'MPa',
+    okKey: 'weld_ok',
+    passWhen: 'lte',
+  },
+  // Machine element — fos_summary: max stress vs permissible + FoS vs required.
+  {
+    key: 'machine_stress',
+    label: 'Max stress vs permissible',
+    valueKey: 'max_stress_mpa',
+    limitKey: 'permissible_stress_mpa',
+    limitLabel: 'Permissible',
+    unit: 'MPa',
+    okKey: 'stress_ok',
+    passWhen: 'lte',
+  },
+  {
+    key: 'machine_fos',
+    label: 'Factor of safety vs required',
+    valueKey: 'factor_of_safety',
+    limitKey: 'required_fos',
+    limitLabel: 'Required',
+    unit: '',
+    okKey: 'fos_ok',
+    passWhen: 'gte',
+  },
 ]
 
 function asNumber(v: unknown): number | null {

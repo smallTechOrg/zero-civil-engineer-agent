@@ -1,5 +1,12 @@
 import { expect, test, type Page } from '@playwright/test'
 
+// The Phase-1 primary design journey (canonical culvert prompt) against the real
+// backend + Gemini. DEFERRED offline: the Gemini project is over its monthly
+// spend cap, so every live LLM call returns 429 RESOURCE_EXHAUSTED — this
+// prompt-submitting spec is marked `test.fixme` and skipped by the offline gate.
+// Re-enable (drop the `test.fixme`) once billing resets; the assertions below are
+// ready to run as-is.
+
 const CANONICAL_PROMPT =
   'single box culvert, 4 m clear span, 3 m height, 2.5 m cushion, BG single line, 25t loading'
 
@@ -10,6 +17,10 @@ test.describe('primary design journey (real backend + Gemini)', () => {
     page,
     request,
   }) => {
+    test.fixme(
+      true,
+      'DEFERRED: Gemini project over monthly spend cap — live LLM calls 429 RESOURCE_EXHAUSTED; re-enable when billing resets',
+    )
     test.setTimeout(300_000)
 
     // --- 1. Styled render ---------------------------------------------------

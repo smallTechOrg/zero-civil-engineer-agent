@@ -35,5 +35,5 @@ Turns the culvert-only pipeline into a multi-domain platform: a curated, validat
 - [ ] `registry.get("box_culvert")` drives a full culvert run producing byte-identical-in-shape artefacts to the pre-refactor pipeline; every existing culvert unit/validation/integration/E2E test passes unchanged.
 - [ ] Auto-detect: "design a 5 m retaining wall for a cutting" classifies `component_type == "rcc_cantilever_retaining_wall"`; "single box culvert, 4 m span…" classifies `box_culvert` (real-LLM integration test).
 - [ ] Picker override: submitting with `requested_component="rcc_cantilever_retaining_wall"` runs the retaining-wall module regardless of prompt phrasing.
-- [ ] A `coming_soon` type ("design a plate girder") returns a graceful `out_of_scope` statement naming it as a future component — not an error.
+- [ ] The `coming_soon` routing is retained: a not-yet-built type would return a graceful `out_of_scope` statement naming it as a future component, not an error. (As of Expansion Phase 3 every roadmap component is `available`, so none currently route here; a genuinely out-of-scope prompt like "design a suspension bridge" still gets the graceful scope statement.)
 - [ ] No node in `src/graph/nodes.py` imports a component-specific engine directly — all engineering dispatch goes through `registry.get(component_type)`.

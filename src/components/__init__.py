@@ -35,7 +35,30 @@ try:  # pragma: no cover - the pier_abutment package is added by a sibling slice
 except ImportError:
     pass
 
-# Roadmap ("coming soon") preview stubs — registered AFTER the available civil
-# components so the available cards sort ahead of the greyed previews in the
-# gallery. Metadata-only; never dispatched to (see components/coming_soon.py).
-from components import coming_soon  # noqa: F401  (registers the 3 mechanical stubs)
+# Mechanical domain (Expansion Phase 3): three new component packages
+# (structural steel / fabrication member, rolling-stock member, machine element)
+# self-register on import. Like the civil breadth modules they MUST be imported
+# BEFORE `coming_soon` so their real available modules win over any leftover
+# preview stub for the same type_id (register() is keyed by type_id, last-writer-wins).
+try:  # pragma: no cover - the structural_steel_member package is added by a sibling slice
+    from components import structural_steel_member  # noqa: F401
+except ImportError:
+    pass
+
+try:  # pragma: no cover - the rolling_stock_member package is added by a sibling slice
+    from components import rolling_stock_member  # noqa: F401
+except ImportError:
+    pass
+
+try:  # pragma: no cover - the machine_element package is added by a sibling slice
+    from components import machine_element  # noqa: F401
+except ImportError:
+    pass
+
+# Roadmap ("coming soon") preview stubs — imported LAST so any future preview
+# sorts after every available component in the gallery. As of Expansion Phase 3
+# every roadmap component (civil breadth + mechanical) is built and available, so
+# this now registers NOTHING (its tuple is empty); it stays imported as reusable
+# infrastructure for future roadmap items. Metadata-only; never dispatched to
+# (see components/coming_soon.py).
+from components import coming_soon  # noqa: F401  (empty as of Expansion Phase 3)

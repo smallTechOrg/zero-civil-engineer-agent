@@ -33,7 +33,7 @@ function trackCss(page: Page): number[] {
 }
 
 test.describe('Expansion Phase 1 — component picker + auto-detect + type summary', () => {
-  test('picker shows available + greyed "Coming soon" cards on a styled render', async ({ page }) => {
+  test('picker shows all 8 available components, none coming-soon, on a styled render', async ({ page }) => {
     const cssStatuses = trackCss(page)
     await page.goto('/app/')
     await assertStyledRender(page, cssStatuses)
@@ -47,47 +47,40 @@ test.describe('Expansion Phase 1 — component picker + auto-detect + type summa
     await expect(auto).toBeVisible()
     await expect(auto).toHaveAttribute('aria-pressed', 'true')
 
-    // Expansion Phase 2 flips the three civil breadth types to available, so the
-    // gallery now shows FIVE selectable civil components.
+    // Expansion Phase 3 flips the three mechanical types to available, so the whole
+    // roadmap is delivered: EIGHT selectable components (5 civil + 3 mechanical).
     const available = picker.locator('[data-testid="component-card"][data-status="available"]')
     await expect(available.first()).toBeVisible()
     expect(
       await available.count(),
-      'five available civil components after civil breadth',
-    ).toBe(5)
+      'eight available components once the mechanical domain lands',
+    ).toBe(8)
+
+    // Both domains are represented — the five civil types and the three mechanical.
     await expect(picker).toContainText(/culvert/i)
     await expect(picker).toContainText(/retaining wall/i)
     await expect(picker).toContainText(/plate girder/i)
     await expect(picker).toContainText(/slab \/ t-beam/i)
     await expect(picker).toContainText(/pier & abutment/i)
+    await expect(picker).toContainText(/structural steel/i)
+    await expect(picker).toContainText(/rolling-stock/i)
+    await expect(picker).toContainText(/machine element/i)
 
-    // Each newly-available civil type is a real, selectable available card.
-    const newCivil = ['plate_girder', 'slab_tbeam', 'pier_abutment'] as const
-    for (const typeId of newCivil) {
+    // Each mechanical type is a real, selectable available card.
+    const mechanical = ['structural_steel_member', 'rolling_stock_member', 'machine_element'] as const
+    for (const typeId of mechanical) {
       const card = picker.locator(`[data-testid="component-card"][data-type-id="${typeId}"]`)
       await expect(card, `${typeId} card is present`).toBeVisible()
       await expect(card, `${typeId} is available, not greyed`).toHaveAttribute('data-status', 'available')
     }
 
-    // Coming-soon cards render greyed with a badge — never an error/disabled bug.
-    // The three mechanical previews remain on the roadmap.
+    // The whole roadmap is delivered: ZERO greyed "Coming soon" cards, no badge.
     const comingSoon = picker.locator('[data-testid="component-card"][data-status="coming_soon"]')
-    expect(
-      await comingSoon.count(),
-      'the three mechanical previews remain greyed',
-    ).toBeGreaterThanOrEqual(3)
-    await expect(page.getByTestId('coming-soon-badge').first()).toBeVisible()
+    expect(await comingSoon.count(), 'no component remains greyed "Coming soon"').toBe(0)
+    await expect(page.getByTestId('coming-soon-badge')).toHaveCount(0)
 
-    // Clicking a greyed card reveals the roadmap (it never selects, never errors).
-    await comingSoon.first().click()
-    await expect(page.getByTestId('coming-soon-roadmap').first()).toBeVisible()
-    await expect(auto, 'a coming-soon click must NOT change the active component').toHaveAttribute(
-      'aria-pressed',
-      'true',
-    )
-
-    // Selecting each newly-available civil card sets it active + shows the prompt hint.
-    for (const typeId of newCivil) {
+    // Selecting each mechanical card sets it active + shows the type-aware prompt hint.
+    for (const typeId of mechanical) {
       const card = picker.locator(`[data-testid="component-card"][data-type-id="${typeId}"]`)
       await card.click()
       await expect(card, `${typeId} becomes the active component`).toHaveAttribute('data-active', 'true')
