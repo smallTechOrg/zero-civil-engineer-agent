@@ -52,3 +52,35 @@ def test_svg_structure_is_stable_for_identical_inputs(tmp_path):
     assert text_layer(svg_first) == text_layer(svg_second)
     assert svg_first.count("<path") == svg_second.count("<path")
     assert svg_first.count("<text") == svg_second.count("<text")
+
+
+def test_visible_glyphs_render_without_system_fonts():
+    """Deploy-parity regression: on a container with NO system fonts, ezdxf must
+    still render TEXT/MTEXT as glyph paths (not empty placeholder boxes).
+
+    render_svg registers matplotlib's bundled DejaVu Sans with ezdxf's font
+    manager, so glyphs resolve regardless of host fonts. We simulate the
+    fontless container by clearing the font manager, then confirm a text-bearing
+    document renders substantial glyph path data with no "no fonts" fallback.
+    """
+    import ezdxf
+    from ezdxf.fonts import fonts
+
+    from drawing.svg_render import _ensure_render_fonts, render_svg
+
+    # Simulate a fontless deploy container, then let render_svg's font bootstrap
+    # (invoked internally) restore a usable font. Reset the once-cache first.
+    _ensure_render_fonts.cache_clear()
+    fonts.font_manager.clear()
+
+    doc = ezdxf.new()
+    doc.modelspace().add_text("SPAN 4000", height=2).set_placement((0, 0))
+    svg = render_svg(doc)
+
+    # The searchable (invisible) layer is one <text> element; the VISIBLE text is
+    # glyph paths. Total path 'd' data must be far larger than an empty box (~60
+    # chars); a real glyph run is hundreds+ of chars.
+    import re
+
+    d_chars = sum(len(m) for m in re.findall(r'd="([^"]*)"', svg))
+    assert d_chars > 500, f"expected glyph path data, got {d_chars} chars (boxes?)"
