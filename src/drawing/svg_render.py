@@ -11,6 +11,8 @@ values, notes, title block) for the UI and downstream assertions.
 
 from __future__ import annotations
 
+import functools
+from pathlib import Path
 from typing import Iterator, NamedTuple
 from xml.sax.saxutils import escape
 
@@ -27,8 +29,39 @@ from ezdxf.document import Drawing
 from ezdxf.math import Matrix44
 
 
+@functools.lru_cache(maxsize=1)
+def _ensure_render_fonts() -> None:
+    """Guarantee ezdxf has a real TTF to render TEXT/MTEXT as glyph paths.
+
+    ezdxf's SVG backend renders text by loading a font from the *host* and
+    emitting filled glyph paths. Its font manager scans system font directories
+    only; on a minimal deploy container with no system fonts installed, that
+    cache is empty and every label/dimension value/note falls back to an empty
+    placeholder box (the deploy bug: geometry rendered, text did not).
+
+    matplotlib is a hard dependency of this app and ships DejaVu Sans *inside*
+    its wheel, so the font is present in every environment the app runs in
+    (dev, CI, container) without needing OS font packages. Point ezdxf's font
+    manager at that folder once so glyphs always render; DejaVu then also serves
+    as ezdxf's fallback for unresolved SHX/text styles.
+    """
+    try:
+        import matplotlib
+
+        from ezdxf.fonts import fonts
+
+        ttf_dir = Path(matplotlib.__file__).parent / "mpl-data" / "fonts" / "ttf"
+        if ttf_dir.is_dir():
+            fonts.font_manager.scan_folder(ttf_dir)
+    except Exception:
+        # Never let font registration break rendering — installed system fonts
+        # (e.g. on a developer machine) still resolve without this.
+        pass
+
+
 def render_svg(doc: Drawing) -> str:
     """Render the modelspace to SVG and append the searchable text layer."""
+    _ensure_render_fonts()
     context = RenderContext(doc)
     backend = SVGBackend()
     # RELATIVE lineweights: the model-space sheet is metres across, so absolute
