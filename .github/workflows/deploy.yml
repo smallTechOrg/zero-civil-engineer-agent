@@ -43,7 +43,7 @@ jobs:
         run: |
           umask 077
           cat > deploy.env <<EOF
-          AGENT_GEMINI_API_KEY=${{ secrets.AGENT_GEMINI_API_KEY }}
+          AGENT_GEMINI_API_KEY=${{ vars.AGENT_GEMINI_API_KEY }}
           AGENT_DATABASE_URL=sqlite:///./data/agent.db
           AGENT_LLM_MODEL=gemini-2.5-pro
           AGENT_PORT=8001
@@ -53,7 +53,7 @@ jobs:
       # ---- authenticate to GCP as the service account ----
       - uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          credentials_json: ${{ vars.GCP_SA_KEY }}
       - uses: google-github-actions/setup-gcloud@v2
 
       # ---- ship + run the remote deploy ----

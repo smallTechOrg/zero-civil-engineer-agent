@@ -26,4 +26,4 @@ jobs:
       - name: Full suite
         run: uv run pytest -q
         env:
-          AGENT_GEMINI_API_KEY: ${{ secrets.AGENT_GEMINI_API_KEY }}
+          AGENT_GEMINI_API_KEY: ${{ vars.AGENT_GEMINI_API_KEY }}
