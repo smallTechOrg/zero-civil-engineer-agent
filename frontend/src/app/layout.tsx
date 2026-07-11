@@ -2,9 +2,9 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'IR Engineering Design & Proof-Check Platform',
+  title: 'Zer0 Rail Agent — smallTech',
   description:
-    'A multi-domain Indian Railways engineering design platform: describe a component and the platform designs and proof-checks it to IR/IS practice.',
+    'Zer0 Rail Agent by smallTech (smalltech.in): describe a railway engineering component and the agent designs and proof-checks it to IR/IS practice.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

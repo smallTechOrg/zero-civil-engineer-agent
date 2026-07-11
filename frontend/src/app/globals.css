@@ -64,6 +64,8 @@
 }
 
 html {
+  /* Global ~20% type/scale reduction for a denser studio (rem-based). */
+  font-size: 80%;
   color-scheme: dark;
   background-color: var(--studio-base);
 }

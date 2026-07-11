@@ -246,6 +246,8 @@ export type TypeSummary = Record<string, unknown>
 export interface RunSnapshot {
   run_id: string
   session_id: string
+  /** Refinement-lineage record root; null when this run IS the root. */
+  root_run_id?: string | null
   prompt: string
   status: RunStatus
   component_type?: string | null
@@ -304,7 +306,14 @@ export interface Preset {
 export interface RunListItem {
   run_id: string
   session_id: string
+  /**
+   * Refinement-lineage record root; null when this run IS the root. The records
+   * rail groups on the effective record id `root_run_id ?? run_id`.
+   */
+  root_run_id?: string | null
   prompt: string
+  /** Component type of the run (NOT NULL on the row; defaults to box_culvert). */
+  component_type: string
   status: RunStatus
   verdict: string | null
   params_summary: string | null

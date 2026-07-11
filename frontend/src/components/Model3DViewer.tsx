@@ -191,7 +191,12 @@ export default function Model3DViewer({ glbUrl, stepUrl, isRunning, runFailed, h
               shadow-intensity="0.6"
               interaction-prompt="none"
               touch-action="pan-y"
-              style={{ width: '100%', height: '100%', display: 'block' }}
+              // Absolutely fill the relatively-positioned parent. A percentage
+              // height (height:100%) collapses to 0 here because model-viewer's
+              // host sets `contain: strict` and the parent's height comes from
+              // `flex-1`, not an explicit CSS height — so the model rendered but
+              // was invisible. Absolute inset resolves against the parent's box.
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', display: 'block' }}
             />
           )}
           {modelState === 'loading' && (

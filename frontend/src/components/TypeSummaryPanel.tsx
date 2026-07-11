@@ -189,7 +189,7 @@ function MetricRow({
     >
       <div>
         <p className="text-sm font-semibold text-slate-700">{label}</p>
-        <p className="text-xs text-slate-500">Required: {requirement}</p>
+        <p className="text-xs text-neutral-400">Required: {requirement}</p>
       </div>
       <div className="flex items-center gap-3">
         <span className={`text-lg font-bold tabular-nums ${pass ? 'text-emerald-800' : 'text-red-800'}`}>{value}</span>
@@ -215,7 +215,7 @@ export default function TypeSummaryPanel({
   if (!hasRun) {
     return (
       <div data-testid="type-summary-empty" className="flex h-full items-center justify-center p-8 text-center">
-        <p className="max-w-md text-base leading-relaxed text-slate-500">
+        <p className="max-w-md text-base leading-relaxed text-neutral-400">
           Run a design to see its stability / type summary here — factors of safety and bearing checks for a retaining
           wall, member checks for a culvert.
         </p>
@@ -226,7 +226,7 @@ export default function TypeSummaryPanel({
   if (runFailed) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-center">
-        <p className="max-w-md text-base leading-relaxed text-slate-500">
+        <p className="max-w-md text-base leading-relaxed text-neutral-400">
           No stability summary — the run did not complete.
         </p>
       </div>
@@ -236,10 +236,10 @@ export default function TypeSummaryPanel({
   if (isRunning && !typeSummary) {
     return (
       <div data-testid="type-summary-loading" className="space-y-3 p-2">
-        <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
-        <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
-        <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
-        <p className="text-sm text-slate-500">Computing stability checks…</p>
+        <div className="h-16 animate-pulse rounded-lg bg-neutral-800" />
+        <div className="h-16 animate-pulse rounded-lg bg-neutral-800" />
+        <div className="h-16 animate-pulse rounded-lg bg-neutral-800" />
+        <p className="text-sm text-neutral-400">Computing stability checks…</p>
       </div>
     )
   }
@@ -249,7 +249,7 @@ export default function TypeSummaryPanel({
   if (!typeSummary || Object.keys(typeSummary).length === 0) {
     return (
       <div data-testid="type-summary-absent" className="flex h-full items-center justify-center p-8 text-center">
-        <p className="max-w-md text-base leading-relaxed text-slate-500">
+        <p className="max-w-md text-base leading-relaxed text-neutral-400">
           This component type does not publish a stability summary. See the Calc Sheet and Proof-Check tabs for its
           member checks and verdict.
         </p>
@@ -326,8 +326,8 @@ export default function TypeSummaryPanel({
   return (
     <div data-testid="type-summary-panel" data-component-type={componentType ?? ''} className="space-y-4 p-1">
       <div>
-        <h3 className="text-lg font-bold text-slate-900">Stability summary</h3>
-        <p className="text-sm text-slate-500">
+        <h3 className="text-lg font-bold text-neutral-100">Stability summary</h3>
+        <p className="text-sm text-neutral-400">
           Deterministic stability checks{componentType ? ` — ${componentType.replace(/_/g, ' ')}` : ''}.
         </p>
       </div>

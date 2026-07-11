@@ -13,7 +13,6 @@ import PromptPanel, { CANONICAL_PROMPT, type PromptMode } from '@/components/Pro
 import StageRail, { type StageId, type StageProgress } from '@/components/StageRail'
 import StageStub from '@/components/StageStub'
 import StatusLine from '@/components/StatusLine'
-import StepTracker from '@/components/StepTracker'
 import SuggestionChips from '@/components/SuggestionChips'
 import {
   ApiError,
@@ -26,6 +25,7 @@ import {
   runEventsUrl,
   submitDesign,
 } from '@/lib/api'
+import { formatParamSpec } from '@/lib/paramSpec'
 import { subscribeToRun, type RunSubscription } from '@/lib/sse'
 import {
   STEP_NAMES,
@@ -52,6 +52,8 @@ interface RunView {
   status: RunStatus
   componentType: string | null
   typeSummary: TypeSummary | null
+  /** The run's gathered/merged component parameters (span, height, loading, …). */
+  params: Record<string, unknown> | null
   steps: Record<StepName, StepState>
   narration: string
   warnings: string[]
@@ -72,6 +74,16 @@ interface RunView {
   errorMessage: string | null
   startedAt: string | null
   durationMs: number | null
+}
+
+/** Fallback display for a component_type when the catalogue hasn't loaded yet. */
+function prettifyType(type: string | null | undefined): string | null {
+  if (!type) return null
+  return type
+    .split('_')
+    .filter(Boolean)
+    .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
 }
 
 function initialSteps(): Record<StepName, StepState> {
@@ -119,6 +131,7 @@ function viewFromSnapshot(snap: RunSnapshot): RunView {
     status: snap.status,
     componentType: snap.component_type ?? null,
     typeSummary: snap.type_summary ?? null,
+    params: snap.params ?? null,
     steps: stepsFromSnapshot(snap),
     narration: terminalNarration(snap.status) ?? snap.plan_text ?? '',
     warnings: snap.warnings ?? [],
@@ -272,6 +285,7 @@ export default function DesignStudio() {
             ...final,
             componentType: final.componentType ?? prev.componentType ?? null,
             typeSummary: final.typeSummary ?? prev.typeSummary ?? null,
+            params: final.params ?? prev.params ?? null,
             svgMarkup: prev.svgMarkup,
             calcSheet: prev.calcSheet ?? final.calcSheet,
             compliance: prev.compliance ?? final.compliance,
@@ -304,8 +318,14 @@ export default function DesignStudio() {
         const next = viewFromSnapshot(snap)
         return {
           ...next,
-          componentType: next.componentType ?? prev?.componentType ?? null,
+          // A still-running row reports the DB-default component_type (box_culvert)
+          // until the classifier/finish writes the real one. Never let that default
+          // clobber the type we already know (the established type on a refine);
+          // only adopt the snapshot's type once the run is terminal.
+          componentType:
+            prev?.componentType ?? (snap.status === 'running' ? null : next.componentType ?? null),
           typeSummary: next.typeSummary ?? prev?.typeSummary ?? null,
+          params: next.params ?? prev?.params ?? null,
           svgMarkup: prev?.svgMarkup ?? null,
           calcSheet: prev?.calcSheet ?? next.calcSheet,
           compliance: prev?.compliance ?? next.compliance,
@@ -414,7 +434,13 @@ export default function DesignStudio() {
   )
 
   const beginLiveRun = useCallback(
-    (runId: string, sid: string, prompt: string, componentType: string | null) => {
+    (
+      runId: string,
+      sid: string,
+      prompt: string,
+      componentType: string | null,
+      rootRunId?: string | null,
+    ) => {
       elapsedBaseRef.current = { baseMs: 0, wallStart: Date.now() }
       setElapsedMs(0)
       // NOTE (tab-yank fix, spec/ui.md "Tab / stage focus rule"): we deliberately
@@ -427,6 +453,7 @@ export default function DesignStudio() {
         status: 'running',
         componentType,
         typeSummary: null,
+        params: null,
         steps: initialSteps(),
         narration: '',
         warnings: [],
@@ -452,7 +479,11 @@ export default function DesignStudio() {
         {
           run_id: runId,
           session_id: sid,
+          // Stamp the record root so a live refine groups onto the SAME card
+          // immediately (backend confirms the same value on refresh).
+          root_run_id: rootRunId ?? null,
           prompt,
+          component_type: componentType ?? 'box_culvert',
           status: 'running',
           verdict: null,
           params_summary: null,
@@ -481,30 +512,49 @@ export default function DesignStudio() {
       // or the Define stage advances to Overview once artefacts begin. This is an
       // explicit user action, never a mid-watch reset.
       const wasEntry = run === null
+      // Refinement lineage: a REFINE (a run is already open) joins the open
+      // design's record — pass its run_id as parent_run_id so the backend appends
+      // a new version to the SAME record. A New-design submit / [+ New design]
+      // passes no parent, starting a fresh record.
+      const parentRunId = wasEntry ? undefined : run?.runId ?? undefined
+      // The open run's record root — stamped on the optimistic turn so the live
+      // refine groups onto the SAME card immediately (no duplicate card flash).
+      let optimisticRoot: string | null | undefined = wasEntry
+        ? undefined
+        : turns.find(t => t.run_id === run?.runId)?.root_run_id ?? run?.runId
       try {
         let sid = sessionId
         if (!sid) {
           sid = (await createSession()).session_id
           persistSession(sid)
         }
-        const pickedType = selectedComponent
+        // On a refine (not the first submit from the entry), stay in the
+        // already-established component space instead of re-detecting from the
+        // default — this also prevents the momentary "Box Culvert" flash.
+        const pickedType = selectedComponent ?? (wasEntry ? null : run?.componentType ?? null)
         let response
         try {
-          response = await submitDesign(sid, prompt, pickedType)
+          response = await submitDesign(sid, prompt, pickedType, parentRunId)
         } catch (error) {
           if (error instanceof ApiError && error.status === 404) {
             sid = (await createSession()).session_id
             persistSession(sid)
             setTurns([])
             setSessionCostUsd(0)
-            response = await submitDesign(sid, prompt, pickedType)
+            // Fresh session — the parent no longer exists, so this starts a new
+            // record (backend resolves the unknown parent to NULL gracefully).
+            optimisticRoot = undefined
+            response = await submitDesign(sid, prompt, pickedType, parentRunId)
           } else {
             throw error
           }
         }
         setPromptValue('')
-        if (wasEntry) setStage('overview')
-        beginLiveRun(response.run_id, sid, prompt, pickedType)
+        // Submitting a design OR a refine returns to the Overview to watch the
+        // run progress across the stage rail. (A resulting clarification/failure
+        // switches to the Refine stage via the effects above.)
+        setStage('overview')
+        beginLiveRun(response.run_id, sid, prompt, pickedType, optimisticRoot)
       } catch (error) {
         if (error instanceof ApiError) {
           if (error.code === 'RUN_ACTIVE') {
@@ -523,7 +573,7 @@ export default function DesignStudio() {
         setSubmitting(false)
       }
     },
-    [beginLiveRun, persistSession, run, selectedComponent, sessionId, submitting],
+    [beginLiveRun, persistSession, run, selectedComponent, sessionId, submitting, turns],
   )
 
   const loadPastRun = useCallback(
@@ -639,7 +689,13 @@ export default function DesignStudio() {
   )
   const selectedCard = selectedComponent ? componentsById[selectedComponent] ?? null : null
 
+  // A refine (or answering a clarification) operates in an already-established
+  // component space — detection is not re-running, so we must NOT flash the
+  // auto-detect chip (which momentarily reads the default "Box Culvert" before
+  // the classifier confirms). Only show it during the FIRST design's detection.
+  const priorCompleted = turns.some(t => t.status === 'completed')
   const detectedDisplayName =
+    !priorCompleted &&
     selectedComponent === null &&
     run?.componentType &&
     (run.steps.Understand.status === 'active' || run.steps.Understand.status === 'done')
@@ -654,6 +710,20 @@ export default function DesignStudio() {
     return null
   })()
 
+  // A pending clarification needs the user's answer, which lives in the
+  // Define/Refine stage — bring them there so the question isn't missed on
+  // whatever stage they were watching. (Distinct from the tab-yank rule: this
+  // is a required user action, not a mid-run reset.)
+  useEffect(() => {
+    if (pendingQuestion) setStage('define')
+  }, [pendingQuestion])
+
+  // A failed run is terminal and needs the user to adjust and retry — bring them
+  // to the Define/Refine stage where the prompt and "Try again" live.
+  useEffect(() => {
+    if (run?.status === 'failed') setStage('define')
+  }, [run?.status])
+
   const promptMode: PromptMode = pendingQuestion
     ? 'answer'
     : run?.status === 'completed' || turns.some(t => t.status === 'completed')
@@ -663,18 +733,78 @@ export default function DesignStudio() {
   const promptDisabled = submitting || isRunning
 
   // Records for the AppShell left rail (TurnHistory + Library merged & elevated).
-  const records: DesignRecordSummary[] = useMemo(
-    () =>
-      turns.map(t => ({
-        id: t.run_id,
-        promptSummary: t.prompt,
-        componentLabel: t.params_summary ?? 'Design',
-        cost: t.cost_usd ?? 0,
-        status: t.status,
-        verdict: t.verdict ?? null,
-      })),
-    [turns],
+  // Refinement lineage: group runs by their effective record id
+  // (`root_run_id ?? run_id`) so a refine UPDATES the SAME card instead of adding
+  // a new one. Each group shows ONE card reflecting the LATEST version (by
+  // started_at), plus every version (newest first) for keep-versions stepping.
+  const records: DesignRecordSummary[] = useMemo(() => {
+    const timeOf = (s: string | null | undefined) => (s ? Date.parse(s) : 0)
+    // `turns` is newest-first, so a group's first appearance marks its newest
+    // member — preserving Map insertion order keeps the rail newest-first.
+    const groups = new Map<string, RunListItem[]>()
+    for (const t of turns) {
+      const recordId = t.root_run_id ?? t.run_id
+      const members = groups.get(recordId)
+      if (members) members.push(t)
+      else groups.set(recordId, [t])
+    }
+    return Array.from(groups.entries()).map(([recordId, members]) => {
+      // Oldest→newest gives v1..vN; reverse for newest-first display.
+      const chrono = [...members].sort((a, b) => timeOf(a.started_at) - timeOf(b.started_at))
+      const versions = chrono
+        .map((m, i) => ({
+          runId: m.run_id,
+          label: `v${i + 1}`,
+          status: m.status,
+          verdict: m.verdict ?? null,
+        }))
+        .reverse()
+      const latest = chrono[chrono.length - 1]
+      // Card title = the ORIGINAL (v1) request, which is descriptive; a later
+      // refine prompt is often a terse edit ("increase fill to 4 m").
+      const promptSummary = chrono[0]?.prompt ?? latest.prompt
+      // Proper component label = display name (mapped from component_type) + the
+      // newest non-empty params_summary across versions. Never bare "Design".
+      const displayName =
+        componentsById[latest.component_type]?.display_name ?? prettifyType(latest.component_type)
+      const newestSummary =
+        [...chrono].reverse().map(m => m.params_summary).find(s => s && s.trim()) ?? null
+      const componentLabel = displayName
+        ? newestSummary
+          ? `${displayName} · ${newestSummary}`
+          : displayName
+        : newestSummary ?? 'Design'
+      return {
+        id: recordId,
+        latestRunId: latest.run_id,
+        promptSummary,
+        componentLabel,
+        cost: latest.cost_usd ?? 0,
+        status: latest.status,
+        verdict: latest.verdict ?? null,
+        versions,
+      }
+    })
+  }, [turns, componentsById])
+
+  // The open run's effective record id (its group root) — highlights the whole
+  // card, while run.runId highlights the exact version chip.
+  const activeRecordId = useMemo(() => {
+    if (!run) return null
+    const openTurn = turns.find(t => t.run_id === run.runId)
+    return openTurn?.root_run_id ?? run.runId
+  }, [run, turns])
+
+  // The open run's library row — carries the concise one-line params_summary and
+  // component_type (empty on a still-running/failed run, so we fall back).
+  const currentTurn = useMemo(
+    () => (run ? turns.find(t => t.run_id === run.runId) ?? null : null),
+    [run, turns],
   )
+  const currentParamsSummary = currentTurn?.params_summary?.trim() || null
+  // Overview Define/Refine card requirement line: the one-liner if we have it,
+  // else the original request text.
+  const requirementSummary = run ? currentParamsSummary ?? run.prompt : null
 
   const suggestions = run?.status === 'completed' ? run.suggestions : []
 
@@ -697,46 +827,112 @@ export default function DesignStudio() {
       }
     : { define: 'pending', design: 'pending', review: 'pending' }
 
-  // ------------------------------------------------------------------ Define
+  // The Refine surface (prompt + suggestions) — reused by the Define/Refine
+  // stage and surfaced compactly on the Overview so the user can refine there.
+  const currentComponentName = run?.componentType
+    ? componentsById[run.componentType]?.display_name ?? run.componentType.replace(/_/g, ' ')
+    : null
+  const refinePanel = (
+    <div className="space-y-4">
+      <DetectedTypeChip displayName={detectedDisplayName} onSwitch={() => setStage('define')} disabled={isRunning} />
+      <SuggestionChips suggestions={suggestions} onPick={handleSuggestionPick} disabled={promptDisabled} />
+      <PromptPanel
+        value={promptValue}
+        onChange={value => {
+          setPromptValue(value)
+          if (formError) setFormError(null)
+        }}
+        onSubmit={() => void submitPrompt(promptValue)}
+        mode={promptMode}
+        disabled={promptDisabled}
+        disabledReason={isRunning ? 'A design run is in progress — the prompt re-opens when it finishes.' : null}
+        formError={formError}
+        clarificationQuestion={pendingQuestion}
+        placeholder={selectedCard?.example_prompt || CANONICAL_PROMPT}
+        hint={
+          run
+            ? 'Adjust a dimension, load or material and re-run — the component type is already fixed.'
+            : 'The agent auto-detects the component — or pick one above.'
+        }
+      />
+    </div>
+  )
+
+  // ------------------------------------------------------------------ Refine
+  // In the open workspace a design always exists, so "Define" adapts to a
+  // Refine surface: no component gallery, a read-only input summary + refine box.
   const defineStage = (
     <div className="space-y-4">
-      {components.length > 0 && (
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
-          <ComponentPicker
-            components={components}
-            activeTypeId={selectedComponent}
-            onSelect={setSelectedComponent}
-            disabled={promptDisabled}
-          />
+      {run && (
+        <div
+          data-testid="refine-input-summary"
+          className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5"
+        >
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">Current design</h3>
+          <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Component</dt>
+              <dd className="mt-0.5 text-base font-semibold text-neutral-100">
+                {currentComponentName ?? 'Auto-detected'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Code set</dt>
+              <dd className="mt-0.5 text-base font-semibold text-neutral-100">
+                {run.componentType && componentsById[run.componentType]?.codes?.length
+                  ? componentsById[run.componentType].codes.join(', ')
+                  : '—'}
+              </dd>
+            </div>
+            <div className="sm:col-span-2">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Original request</dt>
+              <dd className="mt-0.5 text-sm leading-relaxed text-neutral-300">{run.prompt}</dd>
+            </div>
+          </dl>
+
+          {/* Specification — the accumulated/merged parameters gathered across
+              every prompt so far, not just the original request. */}
+          <div data-testid="refine-specification" className="mt-4 border-t border-neutral-800 pt-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Specification</h4>
+              {currentParamsSummary && (
+                <span
+                  data-testid="refine-spec-headline"
+                  className="text-sm font-semibold text-neutral-100"
+                >
+                  {currentParamsSummary}
+                </span>
+              )}
+            </div>
+            {(() => {
+              const spec = formatParamSpec(run.params)
+              if (spec.length === 0) {
+                return (
+                  <p className="mt-2 text-sm text-neutral-500">
+                    {isRunning
+                      ? 'Parameters are being extracted from your request…'
+                      : 'Parameters appear here as the agent extracts them from your prompts.'}
+                  </p>
+                )
+              }
+              return (
+                <dl data-testid="refine-spec-grid" className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
+                  {spec.map(({ label, value }) => (
+                    <div
+                      key={label}
+                      className="flex items-baseline justify-between gap-3 border-b border-neutral-900 pb-1.5"
+                    >
+                      <dt className="text-xs uppercase tracking-wide text-neutral-500">{label}</dt>
+                      <dd className="text-right text-sm font-semibold tabular-nums text-neutral-200">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )
+            })()}
+          </div>
         </div>
       )}
-      <DetectedTypeChip
-        displayName={detectedDisplayName}
-        onSwitch={() => setStage('define')}
-        disabled={isRunning}
-      />
-      <SuggestionChips suggestions={suggestions} onPick={handleSuggestionPick} disabled={promptDisabled} />
-      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">
-        <PromptPanel
-          value={promptValue}
-          onChange={value => {
-            setPromptValue(value)
-            if (formError) setFormError(null)
-          }}
-          onSubmit={() => void submitPrompt(promptValue)}
-          mode={promptMode}
-          disabled={promptDisabled}
-          disabledReason={isRunning ? 'A design run is in progress — the prompt re-opens when it finishes.' : null}
-          formError={formError}
-          clarificationQuestion={pendingQuestion}
-          placeholder={selectedCard?.example_prompt || CANONICAL_PROMPT}
-          hint={
-            selectedCard
-              ? `Designing a ${selectedCard.display_name}. ${selectedCard.summary}`
-              : 'The agent auto-detects the component — or pick one above.'
-          }
-        />
-      </div>
+      <div className="rounded-2xl border border-neutral-800 bg-neutral-950 p-5">{refinePanel}</div>
     </div>
   )
 
@@ -768,7 +964,7 @@ export default function DesignStudio() {
           )
         })}
       </div>
-      <div className="min-h-0 flex-1 rounded-xl bg-white p-4 shadow-sm">
+      <div className="min-h-0 flex-1 rounded-xl border border-neutral-800 bg-neutral-950 p-4">
         {designPanel === 'drawing' && (
           <DrawingViewer
             svgMarkup={run?.svgMarkup ?? null}
@@ -803,7 +999,7 @@ export default function DesignStudio() {
 
   // ------------------------------------------------------------------ Review
   const reviewStage = (
-    <div className="rounded-xl bg-white p-5 shadow-sm">
+    <div className="rounded-xl border border-neutral-800 bg-neutral-950 p-5">
       <ProofCheckPanel
         compliance={run?.compliance ?? null}
         memoMarkdown={run?.memoMarkdown ?? null}
@@ -819,18 +1015,26 @@ export default function DesignStudio() {
   )
 
   // ---------------------------------------------------------------- Overview
+  const openDesignPanel = (panel: DesignPanel) => {
+    setDesignPanel(panel)
+    setStage('design')
+  }
   const overviewStage = (
     <OverviewPanel
       verdict={run?.verdict ?? null}
       componentType={run?.componentType ?? null}
       componentDisplayName={run?.componentType ? componentsById[run.componentType]?.display_name ?? null : null}
+      requirementSummary={requirementSummary}
       codes={run?.componentType ? componentsById[run.componentType]?.codes ?? [] : []}
       typeSummary={run?.typeSummary ?? null}
       svgMarkup={run?.svgMarkup ?? null}
-      onOpenDrawing={() => {
-        setDesignPanel('drawing')
-        setStage('design')
-      }}
+      onSelectStage={setStage}
+      onOpenDrawing={() => openDesignPanel('drawing')}
+      onOpenCalc={() => openDesignPanel('calc')}
+      onOpen3d={() => openDesignPanel('3d')}
+      drawingReady={!!run?.svgMarkup}
+      calcReady={!!run?.calcSheet}
+      modelReady={!!run?.glbUrl}
       runTokens={run?.runTokens ?? 0}
       runCostUsd={run?.runCostUsd ?? 0}
       createdAt={run?.startedAt ?? null}
@@ -923,8 +1127,15 @@ export default function DesignStudio() {
   )
 
   const openWorkspace = (
-    <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <StageRail active={stage} onSelect={setStage} progress={progress} />
+    <div className="flex min-h-0 flex-1 flex-col gap-3 px-6 py-4">
+      <StageRail
+        active={stage}
+        onSelect={setStage}
+        progress={progress}
+        elapsedMs={run ? elapsedMs : null}
+        isRunning={isRunning}
+        defineAsRefine={!!run}
+      />
 
       {run?.status === 'failed' && (
         <div
@@ -946,17 +1157,18 @@ export default function DesignStudio() {
         </div>
       )}
 
-      {/* Live run progress band — always visible while a design is open so
-          feedback never depends on the active stage (never yanks focus). */}
-      {run && (
+      {/* Compact run-progress line. The per-stage progress dots + elapsed timer
+          now live ON the Stage Rail above (item 1). Here we keep only a single
+          narration/warning line, with the full six-step tracker reachable behind
+          a disclosure — so it never reintroduces a tall vertical band and the
+          detail area below takes almost all the space. The tracker stays mounted
+          (even collapsed) so live step state is always tracked. */}
+      {run && run.warnings.length > 0 && (
         <section
-          aria-label="Run progress"
-          className="space-y-3 rounded-xl border border-neutral-800 bg-neutral-900 p-4"
+          aria-label="Run warnings"
+          className="rounded-xl border border-neutral-800 bg-neutral-900/70 px-4 py-2.5"
         >
-          <StepTracker steps={run.steps} runId={run.runId} elapsedMs={elapsedMs} isRunning={isRunning} />
-          {(run.narration || run.warnings.length > 0) && (
-            <StatusLine text={run.narration} warnings={run.warnings} />
-          )}
+          <StatusLine text="" warnings={run.warnings} />
         </section>
       )}
 
@@ -984,7 +1196,8 @@ export default function DesignStudio() {
           sessionCost: sessionCostUsd,
         }}
         records={records}
-        activeRecordId={run?.runId ?? null}
+        activeRecordId={activeRecordId}
+        activeRunId={run?.runId ?? null}
         onSelectRecord={runId => void loadPastRun(runId)}
         onNewDesign={handleNewDesign}
       >

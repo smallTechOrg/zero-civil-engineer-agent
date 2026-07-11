@@ -10,19 +10,29 @@ export type TokenCostState = {
   sessionCost: number // session/day running total
 }
 
-export type DesignRecordSummary = {
-  id: string // run_id
-  promptSummary: string // short prompt text
-  componentLabel: string // e.g. "Box Culvert"
-  cost: number // this design's cost (USD)
+export type DesignRecordVersion = {
+  runId: string // this version's run_id
+  label: string // "v1", "v2", … (oldest = v1)
   status: string // raw backend run status
   verdict: string | null // raw backend verdict or null
+}
+
+export type DesignRecordSummary = {
+  id: string // effective record id (root_run_id ?? run_id) — grouping + active key
+  latestRunId: string // newest version's run_id — what a card click opens
+  promptSummary: string // latest version's prompt
+  componentLabel: string // e.g. "Box Culvert" (latest version)
+  cost: number // latest version's cost (USD)
+  status: string // latest version's raw backend run status
+  verdict: string | null // latest version's raw backend verdict or null
+  versions: DesignRecordVersion[] // every version, NEWEST first
 }
 
 export type AppShellProps = {
   tokens: TokenCostState
   records: DesignRecordSummary[]
-  activeRecordId: string | null
+  activeRecordId: string | null // group root of the open run — highlights the card
+  activeRunId: string | null // the open version's run_id — highlights the version chip
   onSelectRecord: (id: string) => void
   onNewDesign: () => void
   children: React.ReactNode // the workspace (StageRail + active stage content)
@@ -57,11 +67,13 @@ export default function AppShell({
   tokens,
   records,
   activeRecordId,
+  activeRunId,
   onSelectRecord,
   onNewDesign,
   children,
 }: AppShellProps) {
   const [railOpen, setRailOpen] = useState(true)
+  const [logoOk, setLogoOk] = useState(true)
 
   return (
     <div className="flex min-h-screen flex-col bg-studio-base text-studio-text">
@@ -76,12 +88,32 @@ export default function AppShell({
           >
             <span aria-hidden>☰</span>
           </button>
-          <span className="flex items-center gap-2">
-            <span aria-hidden className="text-lg text-studio-accent">
-              ◈
-            </span>
-            <span className="text-lg font-semibold tracking-tight text-studio-text">
-              IR Engineering Design &amp; Proof-Check Platform
+          <span className="flex items-center gap-2.5">
+            {logoOk ? (
+              // Brand logo (white line-art) — drop the PNG at frontend/public/brand/zero-rail-logo.png.
+              // Falls back to the accent glyph until the asset is present.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src="/app/brand/zero-rail-logo.png"
+                alt="Zer0 Rail Agent logo"
+                onError={() => setLogoOk(false)}
+                className="h-7 w-7 object-contain"
+              />
+            ) : (
+              <span aria-hidden className="text-lg text-studio-accent">
+                ◈
+              </span>
+            )}
+            <span className="flex items-baseline gap-2">
+              <span className="text-lg font-semibold tracking-tight text-studio-text">Zer0 Rail Agent</span>
+              <a
+                href="https://smalltech.in"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-studio-text-faint transition-colors hover:text-studio-text-dim"
+              >
+                by smallTech · smalltech.in
+              </a>
             </span>
           </span>
           <span className="ml-auto">
@@ -100,6 +132,7 @@ export default function AppShell({
             <DesignRecordsRail
               records={records}
               activeRecordId={activeRecordId}
+              activeRunId={activeRunId}
               onSelectRecord={onSelectRecord}
               onNewDesign={onNewDesign}
             />

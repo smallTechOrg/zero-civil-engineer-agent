@@ -8,24 +8,22 @@ interface StatusLineProps {
 
 export default function StatusLine({ text, warnings }: StatusLineProps) {
   return (
-    <div className="space-y-3">
-      <div
-        data-testid="status-line"
-        aria-live="polite"
-        className="min-h-[1.75rem] text-lg leading-relaxed text-slate-800 [&_p]:m-0 [&_strong]:font-semibold"
-      >
-        {text ? (
+    <div className="space-y-2">
+      {text && (
+        <div
+          data-testid="status-line"
+          aria-live="polite"
+          className="text-sm leading-relaxed text-neutral-300 [&_p]:m-0 [&_strong]:font-semibold [&_strong]:text-neutral-100"
+        >
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
-        ) : (
-          <span className="text-slate-400">Waiting for a design request…</span>
-        )}
-      </div>
+        </div>
+      )}
       {warnings.map((message, i) => (
         <div
           key={i}
           data-testid="warning-banner"
           role="status"
-          className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-base text-amber-900"
+          className="flex items-start gap-3 rounded-lg border border-amber-800/60 bg-amber-950/30 px-4 py-3 text-base text-amber-200"
         >
           <svg
             width="20"
