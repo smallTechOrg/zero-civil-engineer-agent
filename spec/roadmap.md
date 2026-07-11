@@ -34,7 +34,7 @@ IR bridge design and independent proof-checking (DDC → Proof Checking Consulta
 ## What This Agent Does NOT Do (Out of Scope)
 
 - **Not a generic CAD tool.** The platform stays IR-specific: every design on the demo path is IR/IRS-validated and clause-cited. Non-railway or non-engineering requests get a graceful scope statement.
-- Component types beyond those **registered and `status="available"`** at the current phase. New civil types (plate girder, slab/T-beam, pier & abutment) and mechanical domains (structural steel/fabrication, rolling-stock members, machine elements) are on the phased plan below — they appear in the picker as greyed "Coming soon" until their phase lands, not silently absent.
+- Component types beyond those **registered and `status="available"`** at the current phase. The civil breadth types (plate girder, slab/T-beam, pier & abutment) are now **built and available** (Expansion Phase 2, breadth-first — deepening to full parity is later work). The mechanical domains (structural steel/fabrication, rolling-stock members, machine elements) remain on the phased plan below — they appear in the picker as greyed "Coming soon" until their phase lands, not silently absent.
 - FOBs, multi-cell/double-line boxes, skew culverts remain unscheduled follow-ons.
 - Loading standards beyond 25t Loading-2008 for the culvert (the loading layer is pluggable; DFC 32.5t is a later drop-in, not built now).
 - Hydraulic design computation (vent area, HFL, afflux, scour per RBF-16) — echoed as user-supplied inputs in the proof-check, honestly marked "not verified".
@@ -152,7 +152,9 @@ Phases 1–3 delivered the full culvert (design + proof-check + 3D + library). T
   4. **Regression:** run the canonical culvert prompt → identical behaviour to before (GA, calc sheet, proof-check, 3D, library entry).
   5. **Stubs (not bugs):** greyed component cards say "Coming in a later phase"; everything on the two working types is real.
 
-### Expansion Phase 2 — Civil Breadth: Plate Girder + Slab / T-beam Superstructure + Pier & Abutment
+### Expansion Phase 2 — Civil Breadth: Plate Girder + Slab / T-beam Superstructure + Pier & Abutment  ✅ DELIVERED / BUILT
+
+**Status: BUILT (breadth-first).** The three components are registered on the existing interface and are `status="available"`: NL/picker → typed params → GA drawing + core code-checks + IR-protocol proof-check + 3D each work end-to-end. Their gallery cards move from greyed "Coming soon" to **available**. Full culvert/retaining-wall-level parity deepening (every load case, reinforcement/connection design, seismic/wind cases, advanced deck distribution) remains explicit **later work**, not part of this breadth-first delivery.
 
 - **Goal:** register three more civil components **breadth-first** (NL/picker → typed params → GA drawing + core code-checks + IR-protocol proof-check + 3D), each as an independent `src/components/<type>/` plug-in; they then deepen toward culvert/retaining-wall parity in follow-up work. Each reuses the shared core and review spine; each declares its own code set (plate girder → IRS Steel Bridge Code / IS 800; slab & T-beam → IRS Concrete Bridge Code / IS 456; pier & abutment → IRS Bridge Substructure & Foundation Code).
 - **Capabilities delivered:** [plate-girder](capabilities/plate-girder.md) · [slab-tbeam](capabilities/slab-tbeam.md) · [pier-abutment](capabilities/pier-abutment.md) (each a new component module; ≥3 capabilities).

@@ -194,6 +194,52 @@ export interface RetainingWallTypeSummary {
   bearing_ok: boolean
 }
 
+// --- Expansion Phase 2 (civil breadth) type_summary shapes -------------------
+// Documentary only — the renderer (TypeSummaryPanel) keys off field names via
+// its FOS/COMPARISON descriptors, so `TypeSummary` stays `Record<string,unknown>`.
+
+/** plate_girder — `kind: "stress_summary"`. */
+export interface PlateGirderTypeSummary {
+  kind: 'stress_summary'
+  max_bending_stress_mpa: number
+  permissible_bending_stress_mpa: number
+  bending_ok: boolean
+  max_shear_stress_mpa: number
+  permissible_shear_stress_mpa: number
+  shear_ok: boolean
+  max_deflection_mm: number
+  deflection_limit_mm: number
+  deflection_ok: boolean
+  verdict: string
+}
+
+/** slab_tbeam — `kind: "flexure_summary"`. */
+export interface SlabTbeamTypeSummary {
+  kind: 'flexure_summary'
+  design_moment_knm: number
+  required_depth_mm: number
+  provided_depth_mm: number
+  flexure_ok: boolean
+  design_shear_kn: number
+  shear_stress_mpa: number
+  permissible_shear_mpa: number
+  shear_ok: boolean
+  steel_area_mm2: number
+  min_steel_mm2: number
+  verdict: string
+}
+
+/** pier_abutment — `kind: "stability"` (FoS + bearing, like the retaining wall). */
+export interface PierAbutmentTypeSummary {
+  kind: 'stability'
+  fos_overturning: number
+  fos_sliding: number
+  max_bearing_pressure_kn_m2: number
+  sbc_kn_m2: number
+  bearing_ok: boolean
+  verdict: string
+}
+
 /** Loosely typed: the renderer keys off known fields but tolerates any shape. */
 export type TypeSummary = Record<string, unknown>
 
