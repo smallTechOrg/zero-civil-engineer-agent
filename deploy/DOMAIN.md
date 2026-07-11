@@ -28,7 +28,7 @@ so no CORS is needed.
 ### 1. Attach the VM to the existing LB
 
 ```bash
-bash deploy/setup-loadbalancer.sh
+bash deploy/attach-domain-to-lb.sh
 ```
 
 Idempotent. It creates only VM-specific backend resources (health check
