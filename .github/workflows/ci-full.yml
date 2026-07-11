@@ -1,0 +1,29 @@
+name: CI (full, real Gemini)
+
+# The complete suite INCLUDING the integration tests that call the real Gemini
+# API (per CLAUDE.md: "tests run against the real LLM using keys from .env").
+# This burns tokens, so it is NOT wired to every push — it runs nightly and
+# on-demand. Requires the AGENT_GEMINI_API_KEY repo secret.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *" # 03:00 UTC nightly
+
+jobs:
+  full-suite:
+    name: Full pytest suite (real Gemini)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libs for OpenCASCADE / matplotlib
+        run: sudo apt-get update && sudo apt-get install -y libgl1 libglu1-mesa
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install deps (uv sync)
+        run: uv sync --dev
+      - name: Full suite
+        run: uv run pytest -q
+        env:
+          AGENT_GEMINI_API_KEY: ${{ vars.AGENT_GEMINI_API_KEY }}

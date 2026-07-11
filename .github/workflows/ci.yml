@@ -1,0 +1,57 @@
+name: CI
+
+# Fast, dependency-free gate: frontend build + deterministic backend tests.
+# The real-Gemini integration suite is intentionally NOT run here (it costs
+# tokens on every push). It runs in ci-full.yml (nightly + manual). LLM tests
+# auto-skip when AGENT_GEMINI_API_KEY is unset (tests/conftest.py::_require_llm_key
+# and tests/integration/conftest.py::require_gemini), so simply not providing the
+# key gives a clean deterministic gate.
+
+on:
+  push:
+    branches: [main, "cicd/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  frontend:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+  backend:
+    name: Backend tests (deterministic, no Gemini key)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: System libs for OpenCASCADE / matplotlib
+        run: sudo apt-get update && sudo apt-get install -y libgl1 libglu1-mesa
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - name: Install deps (uv sync)
+        run: uv sync --dev
+      - name: Deterministic unit tests
+        # No AGENT_GEMINI_API_KEY in env -> every real-LLM test auto-skips.
+        run: uv run pytest tests/unit -q
+      - name: Migration smoke (alembic upgrade head)
+        run: |
+          mkdir -p data
+          uv run alembic upgrade head
+        env:
+          AGENT_DATABASE_URL: sqlite:///./data/ci.db

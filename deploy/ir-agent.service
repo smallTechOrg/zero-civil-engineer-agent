@@ -1,0 +1,18 @@
+[Unit]
+Description=IR Civil Engineer Agent (FastAPI + LangGraph)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=iragent
+Group=iragent
+WorkingDirectory=/opt/ir-agent
+# pydantic-settings reads /opt/ir-agent/.env from the working directory.
+ExecStart=/usr/local/bin/uv run python -m src
+Restart=on-failure
+RestartSec=5
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+# Shell scripts + systemd units must stay LF — they run on the Linux VM and
+# would break (bad interpreter / `\r` in commands) with CRLF line endings,
+# regardless of a contributor's local core.autocrlf setting.
+*.sh            text eol=lf
+*.service       text eol=lf
+deploy/**       text eol=lf
