@@ -25,9 +25,11 @@ if [ ! -f /swapfile ]; then
   grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
 fi
 
-echo "==> 2/5 System packages (git, python, OpenCASCADE/matplotlib libs)"
+echo "==> 2/5 System packages (git, OpenCASCADE/matplotlib libs)"
+# Python itself is NOT installed here — uv fetches a standalone CPython (>=3.11)
+# per pyproject. This keeps us independent of the base image's Python version.
 apt-get update
-apt-get install -y git python3.11 python3.11-venv libgl1 libglu1-mesa ca-certificates curl
+apt-get install -y git libgl1 libglu1-mesa ca-certificates curl
 
 echo "==> 3/5 uv (system-wide at /usr/local/bin)"
 if ! command -v /usr/local/bin/uv >/dev/null 2>&1; then
