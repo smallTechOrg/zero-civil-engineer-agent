@@ -1,0 +1,70 @@
+name: Deploy to VM
+
+# On merge to main: build the frontend, bundle the app, ship it to the GCP VM,
+# write the VM's .env from secrets, install deps + run migrations, restart the
+# systemd service. The VM must be bootstrapped once first (see deploy/README.md).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-vm
+  cancel-in-progress: false # never interrupt an in-flight deploy
+
+jobs:
+  deploy:
+    name: Build + deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ---- build the static frontend (never build on the 2 GB VM) ----
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      # ---- bundle backend + built frontend ----
+      - name: Create deploy bundle
+        run: tar czf bundle.tar.gz src alembic alembic.ini pyproject.toml uv.lock frontend/out
+
+      - name: Write .env for the VM
+        run: |
+          umask 077
+          cat > deploy.env <<EOF
+          AGENT_GEMINI_API_KEY=${{ secrets.AGENT_GEMINI_API_KEY }}
+          AGENT_DATABASE_URL=sqlite:///./data/agent.db
+          AGENT_LLM_MODEL=gemini-2.5-pro
+          AGENT_PORT=8001
+          AGENT_ARTIFACTS_DIR=data/artifacts
+          EOF
+
+      # ---- authenticate to GCP as the service account ----
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # ---- ship + run the remote deploy ----
+      - name: Copy files to VM
+        run: |
+          gcloud compute scp bundle.tar.gz deploy.env deploy/deploy-remote.sh \
+            ${{ vars.GCP_INSTANCE }}:/tmp/ \
+            --zone "${{ vars.GCP_ZONE }}" --project "${{ vars.GCP_PROJECT }}" --quiet
+
+      - name: Run remote deploy
+        run: |
+          gcloud compute ssh ${{ vars.GCP_INSTANCE }} \
+            --zone "${{ vars.GCP_ZONE }}" --project "${{ vars.GCP_PROJECT }}" --quiet \
+            --command 'sudo bash /tmp/deploy-remote.sh'
