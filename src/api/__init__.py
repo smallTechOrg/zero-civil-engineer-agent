@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 
@@ -49,6 +50,13 @@ def create_app() -> FastAPI:
     app.include_router(designs.router)
     app.include_router(presets.router)
     app.include_router(components.router)
+
+    # Bare domain → the SPA. The UI lives under /app (Next.js basePath), so a
+    # visitor hitting the root (e.g. https://zero-rail-agent.smalltech.in/)
+    # is redirected to the app instead of getting a 404.
+    @app.get("/", include_in_schema=False)
+    def _root_redirect() -> RedirectResponse:
+        return RedirectResponse(url="/app/")
 
     # Serve the built Next.js static export at /app
     # Run `cd frontend && pnpm build` to generate frontend/out/ before starting.

@@ -54,6 +54,7 @@ Repo → Settings → Secrets and variables → Actions.
 | `GCP_PROJECT` | `ai-agent-boilerplate0` |
 | `GCP_ZONE` | `us-central1-b` |
 | `GCP_INSTANCE` | `ir-civil-agent` |
+| `AGENT_LLM_MODEL` | `gemini-2.5-flash-lite` (Gemini model; written to the VM `.env` each deploy) |
 
 CLI shortcut:
 
@@ -63,7 +64,17 @@ gh secret set AGENT_GEMINI_API_KEY --body "YOUR_GEMINI_KEY"
 gh variable set GCP_PROJECT --body "ai-agent-boilerplate0"
 gh variable set GCP_ZONE   --body "us-central1-b"
 gh variable set GCP_INSTANCE --body "ir-civil-agent"
+gh variable set AGENT_LLM_MODEL --body "gemini-2.5-flash-lite"
 ```
+
+> This repo currently stores `GCP_SA_KEY` and `AGENT_GEMINI_API_KEY` as
+> **variables**, not secrets — variables are plaintext and unmasked in logs.
+> Rotate both keys after the demo.
+
+## Custom domain + HTTPS
+
+To serve at **https://zero-rail-agent.smalltech.in** via a load balancer instead
+of `http://<VM_IP>:8001/app/`, see **[DOMAIN.md](DOMAIN.md)**.
 
 > ⚠️ `key.json` is a credential — delete it after uploading (`rm key.json`). Never commit it.
 
