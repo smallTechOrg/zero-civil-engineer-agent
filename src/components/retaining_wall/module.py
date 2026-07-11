@@ -51,7 +51,7 @@ class RetainingWallComponent:
         "drawing + 3D model, and the same IR-protocol proof-check to IRS/IS-456 codes."
     )
     status = "available"
-    codes = ["IRS Concrete Bridge Code", "IS 456", "IR Bridge Rules"]
+    codes = ["IRS Concrete Bridge Code", "IS 456", "IR Bridge Rules", "IRS Bridge Substructure & Foundation Code"]
     scope_examples = [
         "design a 5 m high RCC cantilever retaining wall, SBC 200 kN/m2, BG single-line track "
         "surcharge, backfill phi 30 degrees",

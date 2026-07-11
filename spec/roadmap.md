@@ -49,7 +49,7 @@ IR bridge design and independent proof-checking (DDC → Proof Checking Consulta
 - LLM = Gemini `gemini-2.5-pro` for ALL agent steps (key already in `.env` as `AGENT_GEMINI_API_KEY`).
 - Full run ≤ ~60 s; UI shows the agent working the whole time (step tracker, narration, elapsed time, tokens/cost).
 - Engineering must be validated against published worked examples before demo day (fixtures V1–V4); a team IR engineer and an IRICEN contact pre-review the encoded tables and drawing conventions.
-- **Codes are per-component, declared by the module** (`ComponentModule.codes`), and the demo path stays clause-cited under the IR umbrella. For the **culvert** the code set is IRS-only — an IS 456/IS 800/IRC citation on a culvert output is a defect. For the **retaining wall** the module declares IRS Concrete Bridge Code + IS 456 (RCC section design) + IR track-surcharge per Bridge Rules; a citation outside a component's declared `codes` set is the defect, not IS-citations per se.
+- **Codes are per-component, declared by the module** (`ComponentModule.codes`), and the demo path stays clause-cited under the IR umbrella. For the **culvert** the code set is IRS-only — an IS 456/IS 800/IRC citation on a culvert output is a defect. For the **retaining wall** the module declares IRS Concrete Bridge Code + IS 456 (RCC section design) + IR track-surcharge per Bridge Rules + IRS Bridge Substructure & Foundation Code (earth-pressure/stability basis, as the pier/abutment declares for the same basis); a citation outside a component's declared `codes` set is the defect, not IS-citations per se.
 
 ---
 

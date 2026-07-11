@@ -66,11 +66,9 @@ These are the entry points. All are manual (`disable-model-invocation: true`). E
 
 ## The skeleton in `src/`
 
-`src/` is the **opinionated baseline** — a working FastAPI + LangGraph + SQLite + Anthropic agent whose capability slot is `transform_text`. Tests pass out of the box. Generators extend this in place — they never copy or rename. The capability slot is:
+`src/` is a **multi-domain Indian Railways (IR) engineering design platform**, not a single capability slot. A **shared-core pipeline** (extract → analyse → check → draw → 3D → review, in `src/graph/`) dispatches every engineering step to a **selected Component Module** through a common **component interface** (`src/components/base.py`), chosen from a **Component Registry** (`src/components/registry.py`). Eight component types are registered today — **5 civil** (box culvert, RCC cantilever retaining wall, plate girder, slab / T-beam deck, pier & abutment) and **3 mechanical** (structural-steel / fabrication member, rolling-stock member, machine element). The LLM is **Google Gemini `gemini-2.5-pro`** for all agent nodes (key in `.env` as `AGENT_GEMINI_API_KEY`); the deterministic engineering core is pure Python with no LLM.
 
-- `src/graph/nodes.py` — `transform_text` node → replace with your capability logic
-- `src/prompts/transform.md` → replace with your system prompt
-- `frontend/src/app/page.tsx` → replace the transform form with your UI
+Add a new structure/component type as **one `src/components/<type>/` module** implementing the component interface plus **one `register(...)` call** — no change to the graph, API, DB, or frontend shell. When adding a capability, read `spec/architecture.md` (the *Component Registry & Component Interface* section) and `spec/capabilities/component-registry.md` — there is no `transform_*` slot to swap.
 
 Everything else (graph structure, runner, API, DB session, settings, test fixtures) is already wired and tested — do not change it unless the spec requires it.
 

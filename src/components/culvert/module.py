@@ -45,7 +45,7 @@ class BoxCulvertComponent:
     domain = "civil"
     summary = "Single-cell RCC box culvert under a railway embankment — sized, analysed, drawn and proof-checked to IRS codes."
     status = "available"
-    codes = ["IRS Concrete Bridge Code", "IRS Bridge Rules", "25t Loading-2008"]
+    codes = ["IRS Concrete Bridge Code", "IRS Bridge Rules", "25t Loading-2008", "IRS Bridge Substructure & Foundation Code"]
     scope_examples = [
         "single box culvert, 4 m clear span, 3 m height, 2.5 m cushion, BG single line, 25t loading",
         "RCC box culvert under a railway embankment",

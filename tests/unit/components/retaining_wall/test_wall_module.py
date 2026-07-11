@@ -41,7 +41,10 @@ def test_declares_full_metadata(wall):
     assert wall.status == "available"
     assert wall.param_model is RetainingWallParams
     assert wall.geometry_model is RetainingWallGeometry
-    assert set(wall.codes) == {"IRS Concrete Bridge Code", "IS 456", "IR Bridge Rules"}
+    assert set(wall.codes) == {
+        "IRS Concrete Bridge Code", "IS 456", "IR Bridge Rules",
+        "IRS Bridge Substructure & Foundation Code",
+    }
     assert wall.critical_fields == [
         "retained_height_m", "safe_bearing_capacity_kn_m2", "backfill_friction_angle_deg",
     ]
