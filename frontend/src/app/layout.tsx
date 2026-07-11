@@ -2,15 +2,15 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'IR Box Culvert Design & Proof-Check Agent',
+  title: 'IR Engineering Design & Proof-Check Platform',
   description:
-    'Designs single-cell RCC box culverts from natural language to IRS practice and proof-checks its own design.',
+    'A multi-domain Indian Railways engineering design platform: describe a component and the platform designs and proof-checks it to IR/IS practice.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-slate-100 text-base text-slate-900 antialiased">{children}</body>
+      <body className="min-h-screen bg-studio-base text-base text-studio-text antialiased">{children}</body>
     </html>
   )
 }

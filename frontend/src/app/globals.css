@@ -1,11 +1,105 @@
 @import "tailwindcss";
 @source "../";
 
+/* ===========================================================================
+   IR Engineering Design & Proof-Check Platform — DARK STUDIO theme tokens.
+
+   A refined technical dark studio: dark, projector-friendly, roomy, restrained
+   single accent, strong WHITE canvas contrast for drawings/3D. Shared by both
+   redesign slices (p4-1-shell + p4-1-stages) — style your panels with these
+   tokens so the palette stays cohesive.
+
+   Palette / surface layers (CSS custom properties, referenced via var()):
+     --studio-base    near-black app background (html/body)
+     --studio-panel   raised panel surface (rails, cards)
+     --studio-panel-2 slightly lighter nested surface (hover / active card)
+     --studio-border  hairline border on dark
+     --studio-border-strong  emphasised border (active record, focus rule)
+     --studio-text    primary text (WCAG AA on --studio-base)
+     --studio-text-dim secondary / muted text
+     --studio-text-faint tertiary / placeholder text
+     --studio-accent  the single restrained accent (indigo)
+     --studio-accent-soft  translucent accent wash (active/hover fills)
+     --studio-canvas  the strong white canvas for drawings/3D
+     --studio-ok / --studio-warn / --studio-bad  status accents
+
+   Shared utility classes:
+     .studio-panel   raised panel surface
+     .studio-card    interactive card (records, gallery)
+     .studio-chip    base status chip
+   =========================================================================== */
+
+@theme {
+  --color-studio-base: #0b0e14;
+  --color-studio-panel: #12161f;
+  --color-studio-panel-2: #1a2029;
+  --color-studio-border: #232a36;
+  --color-studio-border-strong: #3a465a;
+  --color-studio-text: #e8ecf3;
+  --color-studio-text-dim: #a4adbd;
+  --color-studio-text-faint: #6b7688;
+  --color-studio-accent: #7c93ff;
+  --color-studio-accent-strong: #5b74f0;
+  --color-studio-ok: #4ade80;
+  --color-studio-bad: #f87171;
+  --color-studio-warn: #fbbf24;
+}
+
+:root {
+  --studio-base: #0b0e14;
+  --studio-panel: #12161f;
+  --studio-panel-2: #1a2029;
+  --studio-border: #232a36;
+  --studio-border-strong: #3a465a;
+  --studio-text: #e8ecf3;
+  --studio-text-dim: #a4adbd;
+  --studio-text-faint: #6b7688;
+  --studio-accent: #7c93ff;
+  --studio-accent-strong: #5b74f0;
+  --studio-accent-soft: rgba(124, 147, 255, 0.14);
+  --studio-canvas: #ffffff;
+  --studio-ok: #4ade80;
+  --studio-warn: #fbbf24;
+  --studio-bad: #f87171;
+}
+
+html {
+  color-scheme: dark;
+  background-color: var(--studio-base);
+}
+
+body {
+  background-color: var(--studio-base);
+  color: var(--studio-text);
+}
+
+/* Raised panel surface (rails, side columns). */
+.studio-panel {
+  background-color: var(--studio-panel);
+  border-color: var(--studio-border);
+}
+
+/* Interactive card (a design record, a gallery card). */
+.studio-card {
+  background-color: var(--studio-panel);
+  border: 1px solid var(--studio-border);
+  transition: border-color 120ms ease, background-color 120ms ease;
+}
+.studio-card:hover {
+  border-color: var(--studio-border-strong);
+  background-color: var(--studio-panel-2);
+}
+.studio-card[data-active='true'] {
+  border-color: var(--studio-accent);
+  background-color: var(--studio-accent-soft);
+}
+
 /* The GA drawing SVG is inlined (fetched from the artefact endpoint) so the
-   pan/zoom wrapper manipulates real SVG DOM; scale it to its host. */
+   pan/zoom wrapper manipulates real SVG DOM; scale it to its host. The white
+   canvas is intentional — drawings/3D pop against the dark studio. */
 .drawing-svg-host svg {
   width: 100%;
   height: auto;
   max-height: 100%;
-  background: #ffffff;
+  background: var(--studio-canvas);
 }

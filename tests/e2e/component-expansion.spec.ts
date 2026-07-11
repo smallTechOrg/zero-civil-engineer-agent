@@ -110,8 +110,9 @@ test.describe('Expansion Phase 1 — component picker + auto-detect + type summa
     await expect(step(page, 'Understand')).toHaveAttribute('data-status', /active|done/, { timeout: 60_000 })
     await expect(step(page, 'Draw')).toHaveAttribute('data-status', 'done', { timeout: 240_000 })
 
-    // Real inline GA SVG with genuine geometry.
-    await page.getByTestId('tab-drawing').click()
+    // Real inline GA SVG with genuine geometry (Design → Drawing panel).
+    await page.getByTestId('stage-tab-design').click()
+    await page.getByTestId('design-panel-drawing').click()
     const svg = page.locator('[data-testid="drawing-svg"] svg')
     await expect(svg).toBeVisible({ timeout: 60_000 })
     expect(await page.locator('[data-testid="drawing-svg"] svg *').count()).toBeGreaterThan(10)
@@ -147,9 +148,10 @@ test.describe('Expansion Phase 1 — component picker + auto-detect + type summa
     await expect(chip).toContainText(/wall/i)
     await expect(page.getByTestId('detected-type-switch')).toBeVisible()
 
-    // A real GA SVG streams into the Drawing tab.
+    // A real GA SVG streams into the Design → Drawing panel.
     await expect(step(page, 'Draw')).toHaveAttribute('data-status', 'done', { timeout: 240_000 })
-    await page.getByTestId('tab-drawing').click()
+    await page.getByTestId('stage-tab-design').click()
+    await page.getByTestId('design-panel-drawing').click()
     const svg = page.locator('[data-testid="drawing-svg"] svg')
     await expect(svg).toBeVisible({ timeout: 60_000 })
     expect(await page.locator('[data-testid="drawing-svg"] svg *').count(), 'RW GA SVG must carry geometry').toBeGreaterThan(
@@ -159,8 +161,9 @@ test.describe('Expansion Phase 1 — component picker + auto-detect + type summa
     // Run finishes.
     await expect(page.getByTestId('prompt-submit')).toHaveText('Refine', { timeout: 240_000 })
 
-    // Type-aware Stability summary (tab 0): FoS overturning, FoS sliding, bearing.
-    await page.getByTestId('tab-summary').click()
+    // Type-aware Stability summary (now in the Overview stage): FoS overturning,
+    // FoS sliding, bearing.
+    await page.getByTestId('stage-tab-overview').click()
     const panel = page.getByTestId('type-summary-panel')
     await expect(panel).toBeVisible({ timeout: 30_000 })
 
@@ -180,8 +183,8 @@ test.describe('Expansion Phase 1 — component picker + auto-detect + type summa
     await expect(fosSlide).toContainText('1.5')
     await expect(bearing).toContainText(/kN\/m²/)
 
-    // Proof-check verdict block renders.
-    await page.getByTestId('tab-proof-check').click()
+    // Proof-check verdict block renders in the Review stage.
+    await page.getByTestId('stage-tab-review').click()
     await expect(page.getByTestId('verdict-banner')).toBeVisible({ timeout: 30_000 })
 
     // The snapshot carries component_type + the retaining-wall type_summary shape.

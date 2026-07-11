@@ -1,85 +1,38 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 
-// The Library tab and presets editor need NO LLM run: this spec is
-// independent of the journey spec and asserts against whatever the scratch
-// database holds — a populated table when earlier specs ran, the designed
-// empty state otherwise. The presets editor must work in both cases.
+// The Design Records rail replaced the old Library tab + preset editor in the
+// Phase 4.1 redesign. This spec needs NO LLM run: it asserts the rail's shell
+// (new-design action, Projects "coming" stub, and either the designed empty
+// state or real record items with status chips) against whatever the scratch
+// session holds. The full completed-design → record-item → replay path is
+// covered live in design-journey.spec.ts.
 
-async function openLibrary(page: Page) {
-  await page.goto('/app/')
-  // A fresh browser context has no stored session, so the first-visit hero
-  // shows — it carries a direct link into the library. If a session exists,
-  // the tab strip is already rendered.
-  const heroLink = page.getByTestId('hero-library-link')
-  const libraryTab = page.getByTestId('tab-library')
-  await expect(heroLink.or(libraryTab).first()).toBeVisible({ timeout: 15_000 })
-  if (await heroLink.isVisible()) {
-    await heroLink.click()
-  } else {
-    await libraryTab.click()
-  }
-  await expect(page.getByTestId('library-panel')).toBeVisible({ timeout: 15_000 })
-}
+test.describe('Design Records rail shell (no LLM run required)', () => {
+  test('rail renders the new-design action, Projects stub, and empty-or-records state', async ({ page }) => {
+    await page.goto('/app/')
 
-test.describe('design library + presets editor (no LLM run required)', () => {
-  test('library renders the run table or its designed empty state', async ({ page }) => {
-    await openLibrary(page)
+    const rail = page.getByTestId('design-records-rail')
+    await expect(rail).toBeVisible({ timeout: 15_000 })
 
-    // Wait for the listing fetch to settle (skeleton gone, no error panel).
-    await expect(page.getByTestId('library-loading')).toHaveCount(0, { timeout: 15_000 })
-    await expect(page.getByTestId('library-error')).toHaveCount(0)
+    // The [+ New design] entry point is always present.
+    await expect(page.getByTestId('new-design')).toBeVisible()
 
-    const rows = page.getByTestId('library-row')
-    const rowCount = await rows.count()
-    if (rowCount === 0) {
-      const empty = page.getByTestId('library-empty')
+    // The Projects grouping is a clearly-labelled "coming" stub, never a bug.
+    await expect(page.getByTestId('projects-stub')).toContainText(/coming/i)
+
+    // Either the designed empty state OR real record items (with status chips).
+    const empty = page.getByTestId('records-empty')
+    const records = page.getByTestId('record-item')
+    const recordCount = await records.count()
+    if (recordCount === 0) {
       await expect(empty).toBeVisible()
-      await expect(empty).toContainText('Every design you run is stored here — run your first design')
+      await expect(empty).toContainText(/run your first design/i)
     } else {
-      // Table semantics + the spec'd columns on a real row.
-      await expect(page.getByTestId('library-table')).toBeVisible()
-      await expect(page.getByRole('columnheader', { name: 'Verdict' })).toBeVisible()
-      await expect(rows.first().getByTestId('library-verdict')).toBeVisible()
-      await expect(page.getByTestId('library-range')).toContainText(/of \d+/)
+      await expect(records.first()).toBeVisible()
+      await expect(records.first().getByTestId('status-chip')).toBeVisible()
     }
 
-    // The session filter is always present, with the all-sessions option.
-    await expect(page.getByTestId('library-session-filter')).toBeVisible()
-    await expect(page.getByTestId('library-session-filter').locator('option').first()).toHaveText('All sessions')
-
-    // Nothing on the page reads as unfinished.
+    // Nothing on the rail reads as an unfinished bug.
     await expect(page.locator('text=/Coming in Phase/i')).toHaveCount(0)
-  })
-
-  test('presets editor: invalid cover shows the API 422 inline; valid edit persists across reload', async ({
-    page,
-  }) => {
-    await openLibrary(page)
-
-    const editor = page.getByTestId('preset-editor')
-    await expect(editor).toBeVisible({ timeout: 15_000 })
-
-    const cover = page.getByTestId('preset-field-clear_cover_mm')
-    await expect(cover).toBeVisible()
-
-    // --- Invalid: cover 200 mm is outside the 40–75 range → inline 422 ------
-    await cover.fill('200')
-    await page.getByTestId('preset-save').click()
-    const saveError = page.getByTestId('preset-save-error')
-    await expect(saveError).toBeVisible({ timeout: 15_000 })
-    // The API names the valid range in its message (spec/capabilities/design-library.md).
-    await expect(saveError).toContainText('40')
-    await expect(saveError).toContainText('75')
-    await expect(page.getByTestId('preset-save-success')).toHaveCount(0)
-
-    // --- Valid: cover 40 mm saves with an inline success note ---------------
-    await cover.fill('40')
-    await page.getByTestId('preset-save').click()
-    await expect(page.getByTestId('preset-save-success')).toBeVisible({ timeout: 15_000 })
-    await expect(page.getByTestId('preset-save-error')).toHaveCount(0)
-
-    // --- The edit persisted: a full reload shows 40 --------------------------
-    await openLibrary(page)
-    await expect(page.getByTestId('preset-field-clear_cover_mm')).toHaveValue('40', { timeout: 15_000 })
   })
 })

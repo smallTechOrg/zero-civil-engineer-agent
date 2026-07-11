@@ -317,3 +317,30 @@ export interface DesignListing {
   runs: RunListItem[]
   total: number
 }
+
+// ---------------------------------------------------------------------------
+// DesignStatusChip — client-side derivation of a design's status-at-a-glance
+// chip from the existing `status` + `verdict` fields (NO schema change).
+//   • Reviewed ✓  — verdict `recommended_for_approval`
+//   • Needs revision ✗ — verdict `return_for_revision`
+//   • Draft — everything else (completed w/o verdict, needs_input, out_of_scope,
+//     running, failed, or no verdict yet)
+// ---------------------------------------------------------------------------
+
+export type DesignChipTone = 'draft' | 'reviewed' | 'needs_revision'
+
+export interface DesignStatusChipInfo {
+  tone: DesignChipTone
+  label: string
+}
+
+/** Derive the records-rail status chip from a design's raw status + verdict. */
+export function DesignStatusChip(status: string, verdict: string | null): DesignStatusChipInfo {
+  if (verdict === 'recommended_for_approval') {
+    return { tone: 'reviewed', label: 'Reviewed ✓' }
+  }
+  if (verdict === 'return_for_revision') {
+    return { tone: 'needs_revision', label: 'Needs revision ✗' }
+  }
+  return { tone: 'draft', label: 'Draft' }
+}
