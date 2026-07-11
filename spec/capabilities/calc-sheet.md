@@ -24,7 +24,7 @@ Presents the engine's design as a clause-cited calculation sheet in which every 
 ## Business Rules
 - Sheet structure: Design basis (parameters + assumptions + warnings) → Loading (EUDL, CDA, dispersal, earth pressure, surcharge) → Analysis (load cases, envelope forces) → Member checks (per member: flexure, shear, min steel, cover, crack) — each line shows description, value + unit, and citation.
 - **Drill-down is total:** every displayed number references a CalcStep; expanding shows formula and substituted inputs; inputs that are themselves computed link to their own steps (recursive trail).
-- Citations are IRS only (Bridge Rules with ACS level, IRS CBC) — an IS 456/IRC citation anywhere in the sheet is a defect.
+- Citations are IRS only (Bridge Rules with ACS level, IRS CBC, IRS Bridge Substructure & Foundation Code for the earth-pressure/surcharge basis) — an IS 456/IRC citation anywhere in the sheet is a defect.
 - The assumptions block lists every non-user value with its source (preset / engine default) — nothing implicit.
 - The sheet streams in as soon as checks complete — before drawing render and review finish (never blocks on slower artefacts).
 
