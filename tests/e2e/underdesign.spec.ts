@@ -3,6 +3,11 @@ import { expect, test } from '@playwright/test'
 // The demo money-shot: a deliberately under-designed run is caught by the
 // automatic proof-check, then a user-triggered revision recovers the verdict.
 // Two real Gemini runs back-to-back (each < 90 s), hence the generous budget.
+//
+// DEFERRED offline: the Gemini project is over its monthly spend cap, so every
+// live LLM call returns 429 RESOURCE_EXHAUSTED. This spec submits prompts, so it
+// is marked `test.fixme` and skipped by the offline gate; re-enable (drop the
+// `test.fixme`) once billing resets — the assertions are ready to run as-is.
 
 const UNDERDESIGN_PROMPT =
   'single box culvert, 4 m clear span, 3 m height, 2.5 m cushion, BG single line, 25t loading, top slab only 200 mm'
@@ -12,6 +17,10 @@ test.describe('under-designed slab caught by the proof-check (real backend + Gem
   test('thin top slab → warning + FAIL rows + red verdict naming the slab; revision → green verdict', async ({
     page,
   }) => {
+    test.fixme(
+      true,
+      'DEFERRED: Gemini project over monthly spend cap — live LLM calls 429 RESOURCE_EXHAUSTED; re-enable when billing resets',
+    )
     test.setTimeout(420_000)
 
     await page.goto('/app/')

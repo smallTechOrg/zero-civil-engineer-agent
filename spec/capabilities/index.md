@@ -11,6 +11,9 @@ One file per capability — each describes exactly one discrete thing the agent 
 | **Steel Plate Girder Superstructure** (breadth-first component — girder sizing + bending/shear/deflection checks + drawing + 3D + proof-check; IRS Steel Bridge Code / IS 800) | [plate-girder.md](plate-girder.md) | Expansion 2 |
 | **RCC Slab / T-beam Superstructure** (breadth-first component — flexure/shear/min-steel/deflection checks + drawing + 3D + proof-check; IRS Concrete Bridge Code / IS 456) | [slab-tbeam.md](slab-tbeam.md) | Expansion 2 |
 | **Bridge Pier & Abutment Substructure** (breadth-first component — stability + bearing + concrete-stress checks + drawing + 3D + proof-check; IRS Bridge Substructure & Foundation Code / IRS Bridge Rules) | [pier-abutment.md](pier-abutment.md) | Expansion 2 |
+| **Structural Steel / Fabrication Member** (breadth-first mechanical component — section utilisation (axial/bending/shear/combined) + fillet-weld connection checks + fabrication drawing (weld symbols) + 3D + proof-check; IS 800 / IS 816) | [structural-steel-member.md](structural-steel-member.md) | Expansion 3 |
+| **Rolling-Stock Member** (breadth-first mechanical component — RDSO wagon load-case analysis + IS 800 working-stress strength checks + fabrication drawing + 3D + proof-check; RDSO Specifications / IS 800) | [rolling-stock-member.md](rolling-stock-member.md) | Expansion 3 |
+| **Machine Element** (breadth-first mechanical component — shaft / welded-hub sizing + combined bending+torsion strength + fatigue/factor-of-safety checks + detail drawing (GD&T + weld symbols) + 3D + proof-check; Machine Design Code / IS 816) | [machine-element.md](machine-element.md) | Expansion 3 |
 | NL Design Intake (scope gate, **component classification**, extraction, one clarifying question, unusual-value flags) | [nl-design-intake.md](nl-design-intake.md) | 1 (generalised in Expansion 1) |
 | IRS Design Engine (sizing → loads → frame analysis → IRS CBC checks, pluggable loading standard) | [irs-engine.md](irs-engine.md) | 1 (sizing) / 2 (full) |
 | GA Drawing (parametric DXF + server-rendered SVG, pan/zoom, DXF download) | [ga-drawing.md](ga-drawing.md) | 1 |
@@ -20,9 +23,9 @@ One file per capability — each describes exactly one discrete thing the agent 
 | Design Library (audit trail browsing, run replay, presets) | [design-library.md](design-library.md) | 3 (records from 1) |
 | Session Refinement (turn memory, refinement regeneration, revise loop, suggestions) | [session-refinement.md](session-refinement.md) | 1 (memory/refine) / 3 (suggestions) |
 
-## Planned components (later expansion phases — capability docs authored when the phase is built)
+## Expansion-phase components (built — capability docs authored per phase)
 
-Expansion 2 (civil breadth) is **built**: `plate-girder.md`, `slab-tbeam.md`, `pier-abutment.md` are authored above and their modules registered (breadth-first — full parity deepening is later work). Expansion 3 (mechanical, not yet built): `structural-steel-member.md`, `rolling-stock-member.md`, `machine-element.md` — capability docs authored when that phase lands. Each is a new `src/components/<type>/` plug-in against the same interface; see [roadmap.md](../roadmap.md#expansion-phases-platform-evolution--culvert-phases-13-above-are-done).
+Both expansion phases are **built**. Expansion 2 (civil breadth): `plate-girder.md`, `slab-tbeam.md`, `pier-abutment.md`. Expansion 3 (mechanical): `structural-steel-member.md`, `rolling-stock-member.md`, `machine-element.md`. All are authored above and their modules are registered `status="available"` (breadth-first — full parity deepening is later work), so the gallery now shows 8 available components and no coming-soon previews. Each is a new `src/components/<type>/` plug-in against the same interface; see [roadmap.md](../roadmap.md#expansion-phases-platform-evolution--culvert-phases-13-above-are-done).
 
 ## How to Add a New Capability
 

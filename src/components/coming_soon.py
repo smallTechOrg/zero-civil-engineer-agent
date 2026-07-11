@@ -1,15 +1,25 @@
 """Roadmap ("coming soon") component stubs — the picker/gallery preview slots.
 
-Each entry here is a **metadata-only** registry row for a structure/component
-type on the phased plan (Expansion Phases 2 & 3) that is not yet built. It
-declares ONLY the descriptive metadata the catalogue reads — `type_id`,
+This module is the reusable mechanism for surfacing a structure/component type
+that is on the phased plan but **not yet built**: a metadata-only registry row
+declaring ONLY the descriptive metadata the catalogue reads — `type_id`,
 `display_name`, `domain`, `summary`, `status`, `codes`, `scope_examples` — so
 that `GET /api/components` surfaces it and the frontend renders a greyed
 "Coming soon" card (the roadmap is visible, "not silently absent"; see
 spec/roadmap.md and spec/ui.md).
 
-A `coming_soon` stub implements **no** engineering methods and is **never**
-dispatched to:
+**As of Expansion Phase 3 the whole phased roadmap is delivered:** the civil
+breadth types (plate girder, slab/T-beam, pier & abutment, Expansion Phase 2)
+and the mechanical types (structural steel / fabrication member, rolling-stock
+member, machine element, Expansion Phase 3) are all real, self-registering
+`status="available"` component packages. There are therefore currently **NO**
+coming-soon previews — `_COMING_SOON` is empty and this module registers
+nothing. The `ComingSoonComponent` class, `_PendingModel` and the registration
+loop are kept as ready infrastructure so a FUTURE roadmap item is one tuple entry
+away, with no other wiring.
+
+A `coming_soon` stub (were one added) implements **no** engineering methods and
+is **never** dispatched to:
 
 * `registry.is_available()` returns False for it (status != "available"), so
   `POST /api/sessions/{id}/designs` with such a `component_type` is rejected
@@ -24,10 +34,8 @@ The graph dispatches only to `status="available"` types, whose `param_model` /
 read never raises; they are never populated.
 
 Registration order == gallery order. `src/components/__init__.py` imports this
-module AFTER every available component, so the available cards sort ahead of
-these previews. As of Expansion Phase 2 only the three mechanical types remain
-here; the civil breadth types (plate girder, slab/T-beam, pier & abutment) are
-now real available modules.
+module AFTER every available component, so any future preview card sorts after
+the built components in the gallery.
 """
 
 from __future__ import annotations
@@ -71,71 +79,12 @@ class ComingSoonComponent:
     geometry_model: type[BaseModel] = _PendingModel
 
 
-# --- Mechanical domain (Expansion Phase 3) ----------------------------------------
-#
-# The three civil breadth types (plate_girder, slab_tbeam, pier_abutment) were
-# roadmap stubs here through Expansion Phase 1; as of Expansion Phase 2 they are
-# real, self-registering `available` component packages (src/components/<type>/),
-# so their stubs have been removed. Only the mechanical previews remain.
-
-STRUCTURAL_STEEL_MEMBER = ComingSoonComponent(
-    type_id="structural_steel_member",
-    display_name="Structural Steel / Fabrication Member",
-    domain="mechanical",
-    summary=(
-        "Fabricated structural-steel member (beam, column or bracket) — section "
-        "capacity, bolted/welded connection and weld design to IS 800 and the "
-        "Indian welding codes, a fabrication drawing with weld symbols, and the "
-        "same IR-protocol proof-check."
-    ),
-    codes=["IS 800", "IS 816", "IS 9595"],
-    scope_examples=[
-        "design a welded steel bracket to IS 800 with fillet-weld connections",
-        "fabricated steel column for a workshop gantry, IS 800 + weld checks",
-    ],
-)
-
-ROLLING_STOCK_MEMBER = ComingSoonComponent(
-    type_id="rolling_stock_member",
-    display_name="Rolling-Stock Member",
-    domain="mechanical",
-    summary=(
-        "Rolling-stock structural member (underframe or body member) — load-case "
-        "analysis and strength/fatigue checks to RDSO specifications, a fabrication "
-        "drawing with weld symbols, and the same IR-protocol proof-check."
-    ),
-    codes=["RDSO Specifications", "IS 800"],
-    scope_examples=[
-        "design a wagon underframe sole-bar member to RDSO specs",
-        "rolling-stock body pillar member, fatigue-checked to RDSO loading",
-    ],
-)
-
-MACHINE_ELEMENT = ComingSoonComponent(
-    type_id="machine_element",
-    display_name="Machine Element",
-    domain="mechanical",
-    summary=(
-        "Machine element (shaft, gear, coupling or fastener) — strength, fatigue "
-        "and stress-concentration checks to standard machine-design codes, a "
-        "detailed part drawing with GD&T, and the same IR-protocol proof-check."
-    ),
-    codes=["IS 2825", "IS 4218", "Machine-Design Codes"],
-    scope_examples=[
-        "design a power-transmission shaft for 15 kW at 1450 rpm",
-        "size a keyed coupling and check the fastener group",
-    ],
-)
-
-
-# Registration order == gallery order: the mechanical previews (Expansion
-# Phase 3). The civil types are now built, available modules registered ahead of
-# this import (see src/components/__init__.py).
-_COMING_SOON: tuple[ComingSoonComponent, ...] = (
-    STRUCTURAL_STEEL_MEMBER,
-    ROLLING_STOCK_MEMBER,
-    MACHINE_ELEMENT,
-)
+# The roadmap is fully delivered as of Expansion Phase 3 — every civil-breadth
+# and mechanical component is a real, self-registering `available` module
+# (src/components/<type>/), registered ahead of this import. There are therefore
+# no coming-soon previews. Add a future roadmap item by appending one
+# `ComingSoonComponent(...)` entry here; registration order == gallery order.
+_COMING_SOON: tuple[ComingSoonComponent, ...] = ()
 
 for _component in _COMING_SOON:
     register(_component)

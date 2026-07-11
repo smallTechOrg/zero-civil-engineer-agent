@@ -2,9 +2,19 @@ import { expect, test } from '@playwright/test'
 
 // Each test gets a fresh browser context (empty localStorage), so each starts
 // its own session — no cross-test 409 RUN_ACTIVE interference (workers: 1).
+//
+// DEFERRED offline: the Gemini project is over its monthly spend cap, so every
+// live LLM call returns 429 RESOURCE_EXHAUSTED. Both guard-rail tests submit a
+// prompt, so they are marked `test.fixme` and skipped by the offline gate;
+// re-enable (drop the `test.fixme`) once billing resets — the assertions are
+// ready to run as-is.
 
 test.describe('guard rails (real backend + Gemini)', () => {
   test('out-of-scope request renders a graceful scope statement, not an error', async ({ page }) => {
+    test.fixme(
+      true,
+      'DEFERRED: Gemini project over monthly spend cap — live LLM calls 429 RESOURCE_EXHAUSTED; re-enable when billing resets',
+    )
     await page.goto('/app/')
 
     await page.getByTestId('prompt-input').fill('design a suspension bridge')
@@ -25,6 +35,10 @@ test.describe('guard rails (real backend + Gemini)', () => {
   })
 
   test('missing critical parameter asks exactly one pointed question and switches to Answer', async ({ page }) => {
+    test.fixme(
+      true,
+      'DEFERRED: Gemini project over monthly spend cap — live LLM calls 429 RESOURCE_EXHAUSTED; re-enable when billing resets',
+    )
     await page.goto('/app/')
 
     await page.getByTestId('prompt-input').fill('box culvert 3 m height, 2 m cushion')
