@@ -242,8 +242,8 @@ export default function OverviewPanel({
         </ProcessCard>
       </section>
 
-      {/* Drawing thumbnail (dark frame) linking into Design → Drawing. */}
-      <section aria-label="General arrangement" className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      {/* General arrangement — large, full-width preview linking into Design → Drawing. */}
+      <section aria-label="General arrangement" className="space-y-4">
         <div className="rounded-xl border border-neutral-800 bg-neutral-900 p-4">
           <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-neutral-400">General arrangement</h3>
           {svgMarkup ? (
@@ -252,40 +252,38 @@ export default function OverviewPanel({
               data-testid="overview-drawing-thumb"
               onClick={onOpenDrawing}
               title="Open the full drawing in the Design stage"
-              className="group block w-full overflow-hidden rounded-lg border border-neutral-700 bg-white p-2 transition-colors hover:border-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400"
+              className="group block w-full overflow-hidden rounded-lg border border-neutral-700 bg-white p-3 transition-colors hover:border-indigo-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-400"
             >
               <div
                 aria-hidden="true"
-                className="pointer-events-none flex h-48 items-center justify-center overflow-hidden [&_svg]:h-full [&_svg]:w-full [&_svg]:max-w-full"
+                className="pointer-events-none flex h-[26rem] items-center justify-center overflow-hidden lg:h-[34rem] [&_svg]:h-full [&_svg]:w-full [&_svg]:max-w-full"
                 dangerouslySetInnerHTML={{ __html: svgMarkup }}
               />
-              <span className="mt-1 block text-center text-xs font-medium text-indigo-400 group-hover:text-indigo-300">
-                Open drawing →
+              <span className="mt-2 block text-center text-xs font-medium text-indigo-400 group-hover:text-indigo-300">
+                Open full drawing →
               </span>
             </button>
           ) : (
             <div
               data-testid="overview-drawing-empty"
-              className="flex h-48 items-center justify-center rounded-lg border border-dashed border-neutral-700 bg-neutral-950 px-4 text-center text-sm text-neutral-500"
+              className="flex h-[26rem] items-center justify-center rounded-lg border border-dashed border-neutral-700 bg-neutral-950 px-4 text-center text-sm text-neutral-500 lg:h-[34rem]"
             >
               {isRunning ? 'The GA drawing appears here once the Draw step runs.' : 'No drawing for this design yet.'}
             </div>
           )}
         </div>
 
-        {/* Design metadata. */}
-        <div className="space-y-4">
-          <dl className="grid grid-cols-2 gap-2 text-sm">
-            <div className="rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Created</dt>
-              <dd className="mt-0.5 font-semibold text-neutral-100">{fmtCreated(createdAt)}</dd>
-            </div>
-            <div className="rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Duration</dt>
-              <dd className="mt-0.5 font-semibold text-neutral-100">{fmtDuration(durationMs)}</dd>
-            </div>
-          </dl>
-        </div>
+        {/* Design metadata (full-width row below the drawing). */}
+        <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+          <div className="rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Created</dt>
+            <dd className="mt-0.5 font-semibold text-neutral-100">{fmtCreated(createdAt)}</dd>
+          </div>
+          <div className="rounded-lg border border-neutral-800 bg-neutral-900 px-3 py-2">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Duration</dt>
+            <dd className="mt-0.5 font-semibold text-neutral-100">{fmtDuration(durationMs)}</dd>
+          </div>
+        </dl>
       </section>
 
       {/* Detailed key numbers — reachable, collapsible, no longer the hero. */}

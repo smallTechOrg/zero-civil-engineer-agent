@@ -69,10 +69,24 @@ function RailAgentLogo() {
 }
 
 /**
- * smallTech mark — a compact monogram beside the name. Inline SVG (renders with
- * no external asset). Swap the glyph for the official mark when available.
+ * smallTech mark — the official logo (white line-art), loaded from
+ * frontend/public/brand/smalltech-logo.png (served at /app/brand/…). Until the
+ * asset is present it falls back to a compact inline "sT" monogram so the brand
+ * always renders.
  */
 function SmallTechLogo() {
+  const [imgOk, setImgOk] = useState(true)
+  if (imgOk) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src="/app/brand/smalltech-logo.png"
+        alt="smallTech"
+        onError={() => setImgOk(false)}
+        className="h-5 w-5 shrink-0 object-contain"
+      />
+    )
+  }
   return (
     <svg aria-hidden viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-studio-text-dim">
       <rect x="1" y="1" width="18" height="18" rx="5" fill="currentColor" />
