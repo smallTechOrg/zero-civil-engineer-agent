@@ -6,6 +6,33 @@ import { useEffect, useRef, useState } from 'react'
 // case where the model finished loading before our listener attached.
 interface ModelViewerElement extends HTMLElement {
   loaded?: boolean
+  model?: {
+    materials?: Array<{
+      pbrMetallicRoughness?: {
+        setBaseColorFactor?: (rgba: [number, number, number, number]) => void
+        setMetallicFactor?: (v: number) => void
+        setRoughnessFactor?: (v: number) => void
+      }
+    }>
+  }
+}
+
+// The generated GLB carries no material, so model-viewer renders a flat default
+// gray that washes out on the light canvas. Tint it a soft engineering steel-blue
+// (low metalness, mid roughness) so edges and faces of the solid read clearly.
+function recolorModel(el: ModelViewerElement): void {
+  try {
+    const materials = el.model?.materials
+    if (!materials?.length) return
+    for (const m of materials) {
+      const pbr = m.pbrMetallicRoughness
+      pbr?.setBaseColorFactor?.([0.36, 0.5, 0.78, 1])
+      pbr?.setMetallicFactor?.(0.1)
+      pbr?.setRoughnessFactor?.(0.75)
+    }
+  } catch {
+    // Non-fatal: if the runtime shape differs, the default material still renders.
+  }
 }
 
 interface Model3DViewerProps {
@@ -85,10 +112,14 @@ export default function Model3DViewer({ glbUrl, stepUrl, isRunning, runFailed, h
     const el = hostRef.current
     if (!el) return
     if (el.loaded) {
+      recolorModel(el)
       setModelState('loaded')
       return
     }
-    const onLoad = () => setModelState('loaded')
+    const onLoad = () => {
+      recolorModel(el)
+      setModelState('loaded')
+    }
     const onError = () => setModelState('error')
     el.addEventListener('load', onLoad)
     el.addEventListener('error', onError)
@@ -179,7 +210,7 @@ export default function Model3DViewer({ glbUrl, stepUrl, isRunning, runFailed, h
         <div
           data-testid="model3d-viewer"
           data-model-loaded={modelState === 'loaded' ? 'true' : 'false'}
-          className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-inner"
+          className="relative min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-300 bg-gradient-to-b from-slate-50 to-slate-200 shadow-inner"
         >
           {viewerReady && (
             <model-viewer

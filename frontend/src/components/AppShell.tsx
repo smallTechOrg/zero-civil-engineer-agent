@@ -83,7 +83,7 @@ function SmallTechLogo() {
         src="/app/brand/smalltech-logo.png"
         alt="smallTech"
         onError={() => setImgOk(false)}
-        className="h-5 w-5 shrink-0 object-contain"
+        className="h-6 w-6 shrink-0 object-contain"
       />
     )
   }
