@@ -43,6 +43,54 @@ function formatTokenCount(n: number): string {
   return `${n}`
 }
 
+/**
+ * Zer0 Rail Agent brand mark — rail-based: two rails receding to a vanishing
+ * point over sleepers, inside a rounded badge. Inline SVG so it always renders.
+ */
+function RailAgentLogo() {
+  return (
+    <span
+      aria-hidden
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-studio-panel-2 ring-1 ring-studio-border"
+    >
+      <svg viewBox="0 0 32 32" className="h-6 w-6 text-studio-accent" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+        {/* rails converging upward (perspective) */}
+        <path d="M10.5 28 L14 5.5" />
+        <path d="M21.5 28 L18 5.5" />
+        {/* sleepers / ties, foreshortened toward the vanishing point */}
+        <path d="M8.6 26.5 L23.4 26.5" />
+        <path d="M10 21 L22 21" />
+        <path d="M11.2 16 L20.8 16" />
+        <path d="M12.3 11.2 L19.7 11.2" />
+        <path d="M13.2 7 L18.8 7" />
+      </svg>
+    </span>
+  )
+}
+
+/**
+ * smallTech mark — a compact monogram beside the name. Inline SVG (renders with
+ * no external asset). Swap the glyph for the official mark when available.
+ */
+function SmallTechLogo() {
+  return (
+    <svg aria-hidden viewBox="0 0 20 20" className="h-4 w-4 shrink-0 text-studio-text-dim">
+      <rect x="1" y="1" width="18" height="18" rx="5" fill="currentColor" />
+      <text
+        x="10"
+        y="14.2"
+        textAnchor="middle"
+        fontSize="10"
+        fontWeight="700"
+        fontFamily="ui-sans-serif, system-ui, sans-serif"
+        fill="#0b0b0d"
+      >
+        sT
+      </text>
+    </svg>
+  )
+}
+
 /** Top-bar token/cost badge: `12.4k tok · $0.19 run · $0.83 session`. */
 function TokenCostBadge({ tokens }: { tokens: TokenCostState }) {
   return (
@@ -73,7 +121,6 @@ export default function AppShell({
   children,
 }: AppShellProps) {
   const [railOpen, setRailOpen] = useState(true)
-  const [logoOk, setLogoOk] = useState(true)
 
   return (
     <div className="flex min-h-screen flex-col bg-studio-base text-studio-text">
@@ -89,30 +136,19 @@ export default function AppShell({
             <span aria-hidden>☰</span>
           </button>
           <span className="flex items-center gap-2.5">
-            {logoOk ? (
-              // Brand logo (white line-art) — drop the PNG at frontend/public/brand/zero-rail-logo.png.
-              // Falls back to the accent glyph until the asset is present.
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src="/app/brand/zero-rail-logo.png"
-                alt="Zer0 Rail Agent logo"
-                onError={() => setLogoOk(false)}
-                className="h-7 w-7 object-contain"
-              />
-            ) : (
-              <span aria-hidden className="text-lg text-studio-accent">
-                ◈
-              </span>
-            )}
-            <span className="flex items-baseline gap-2">
+            <RailAgentLogo />
+            <span className="flex items-baseline gap-2.5">
               <span className="text-lg font-semibold tracking-tight text-studio-text">Zer0 Rail Agent</span>
               <a
                 href="https://smalltech.in"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs font-medium text-studio-text-faint transition-colors hover:text-studio-text-dim"
+                title="smalltech.in"
+                className="flex items-center gap-1.5 text-xs font-medium text-studio-text-faint transition-colors hover:text-studio-text-dim"
               >
-                by smallTech · smalltech.in
+                <span className="text-studio-text-faint">by</span>
+                <SmallTechLogo />
+                <span>smallTech</span>
               </a>
             </span>
           </span>
