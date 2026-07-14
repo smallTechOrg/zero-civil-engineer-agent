@@ -20,6 +20,7 @@ def type_summary(*, geometry: M00004Geometry, verdict: str) -> dict:
         "thickness_mm": round(geometry.thickness_mm, 1),
         "haunch_mm": round(geometry.haunch_mm, 1),
         "barrel_length_mm": round(geometry.barrel_length_mm, 1),
+        "concrete_grade_resolved": geometry.concrete_grade_resolved,
         "provisional_flags": list(geometry.provisional_flags),
         "verdict": verdict,
     }

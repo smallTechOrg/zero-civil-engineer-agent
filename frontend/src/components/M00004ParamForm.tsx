@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { ConcreteGrade, M00004Params, SteelGrade } from '@/lib/types'
+import type { ConcreteGrade, ExposureCondition, M00004Params, SteelGrade } from '@/lib/types'
 
 // ---------------------------------------------------------------------------
 // M-00004 Standard Box Culvert (RDSO) parameter form. Shown in place of the NL
@@ -94,8 +94,25 @@ const NUMERIC_FIELDS: NumericField[] = [
   },
 ]
 
-const CONCRETE_GRADES: ConcreteGrade[] = ['M25', 'M30', 'M35']
+// Concrete-grade control: 'auto' is the DEFAULT and maps to `concrete_grade: null`
+// (the backend derives the grade per exposure/size — M35 typical, M40 under
+// very-severe). The explicit grades override the derivation.
+type ConcreteGradeChoice = 'auto' | ConcreteGrade
+
+const CONCRETE_GRADE_CHOICES: { value: ConcreteGradeChoice; label: string }[] = [
+  { value: 'auto', label: 'Auto (derive)' },
+  { value: 'M25', label: 'M25' },
+  { value: 'M30', label: 'M30' },
+  { value: 'M35', label: 'M35' },
+  { value: 'M40', label: 'M40' },
+]
 const STEEL_GRADES: SteelGrade[] = ['Fe415', 'Fe500']
+
+const EXPOSURE_CHOICES: { value: ExposureCondition; label: string }[] = [
+  { value: 'moderate', label: 'Moderate' },
+  { value: 'severe', label: 'Severe' },
+  { value: 'very_severe', label: 'Very severe' },
+]
 
 type NumericKey = NumericField['key']
 
@@ -122,8 +139,11 @@ export default function M00004ParamForm({
   serverError,
 }: M00004ParamFormProps) {
   const [numeric, setNumeric] = useState<Record<string, string>>(initialNumericState)
-  const [concreteGrade, setConcreteGrade] = useState<ConcreteGrade>('M30')
-  const [steelGrade, setSteelGrade] = useState<SteelGrade>('Fe500')
+  // Default: Auto (derive) → sends `concrete_grade: null` so the backend derives.
+  const [concreteGrade, setConcreteGrade] = useState<ConcreteGradeChoice>('auto')
+  const [steelGrade, setSteelGrade] = useState<SteelGrade>('Fe415')
+  // Default: Severe — with Auto this derives M35 (Very severe → M40).
+  const [exposure, setExposure] = useState<ExposureCondition>('severe')
   const [errors, setErrors] = useState<Partial<Record<NumericKey, string>>>({})
 
   function setField(key: NumericKey, value: string) {
@@ -170,8 +190,10 @@ export default function M00004ParamForm({
       surcharge_kn_m2: values.surcharge_kn_m2,
       formation_width_m: values.formation_width_m,
       side_slope_h_per_v: values.side_slope_h_per_v,
-      concrete_grade: concreteGrade,
+      // Auto → null: the backend derives the grade per exposure/size.
+      concrete_grade: concreteGrade === 'auto' ? null : concreteGrade,
       steel_grade: steelGrade,
+      exposure,
     }
   }
 
@@ -238,7 +260,7 @@ export default function M00004ParamForm({
         })}
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div>
           <label htmlFor="m00004-concrete_grade" className="block text-sm font-semibold text-slate-700">
             Concrete grade
@@ -248,12 +270,31 @@ export default function M00004ParamForm({
             data-testid="m00004-concrete_grade"
             value={concreteGrade}
             disabled={disabled}
-            onChange={e => setConcreteGrade(e.target.value as ConcreteGrade)}
+            onChange={e => setConcreteGrade(e.target.value as ConcreteGradeChoice)}
             className={`mt-1 ${selectClass}`}
           >
-            {CONCRETE_GRADES.map(g => (
-              <option key={g} value={g}>
-                {g}
+            {CONCRETE_GRADE_CHOICES.map(c => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor="m00004-exposure" className="block text-sm font-semibold text-slate-700">
+            Exposure
+          </label>
+          <select
+            id="m00004-exposure"
+            data-testid="m00004-exposure"
+            value={exposure}
+            disabled={disabled}
+            onChange={e => setExposure(e.target.value as ExposureCondition)}
+            className={`mt-1 ${selectClass}`}
+          >
+            {EXPOSURE_CHOICES.map(c => (
+              <option key={c.value} value={c.value}>
+                {c.label}
               </option>
             ))}
           </select>
@@ -278,6 +319,12 @@ export default function M00004ParamForm({
           </select>
         </div>
       </div>
+      <p data-testid="m00004-materials-note" className="text-xs leading-snug text-slate-500">
+        Leave concrete grade on <span className="font-semibold text-slate-600">Auto (derive)</span> to let the standard
+        pick it from the exposure class — <span className="font-semibold text-slate-600">M35</span> for Moderate/Severe,{' '}
+        <span className="font-semibold text-slate-600">M40</span> under Very severe. Pick an explicit grade only to
+        override. Steel defaults to Fe415 (RDSO/M-00004 default).
+      </p>
 
       {serverError && (
         <p role="alert" data-testid="m00004-server-error" className="text-base font-medium text-red-700">

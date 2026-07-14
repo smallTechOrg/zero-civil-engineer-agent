@@ -7,6 +7,7 @@ import ComponentPicker from '@/components/ComponentPicker'
 import DetectedTypeChip from '@/components/DetectedTypeChip'
 import DrawingViewer from '@/components/DrawingViewer'
 import M00004ParamForm from '@/components/M00004ParamForm'
+import M00004SheetPanel from '@/components/M00004SheetPanel'
 import Model3DViewer from '@/components/Model3DViewer'
 import OverviewPanel from '@/components/OverviewPanel'
 import ProofCheckPanel from '@/components/ProofCheckPanel'
@@ -29,6 +30,7 @@ import {
 import { formatParamSpec } from '@/lib/paramSpec'
 import { subscribeToRun, type RunSubscription } from '@/lib/sse'
 import {
+  M00004_TYPE_ID,
   STEP_NAMES,
   isParamsDirectComponent,
   type ArtefactRecord,
@@ -47,7 +49,7 @@ import {
 
 const SESSION_STORAGE_KEY = 'culvert.session_id'
 
-type DesignPanel = 'drawing' | 'calc' | '3d'
+type DesignPanel = 'drawing' | 'calc' | '3d' | 'sheet'
 
 interface RunView {
   runId: string
@@ -78,6 +80,21 @@ interface RunView {
   errorMessage: string | null
   startedAt: string | null
   durationMs: number | null
+  /** The run's full artefact list (kind/filename/url) — powers the data-driven
+   *  M-00004 full-GA-sheet panel, which renders whatever kinds are present. */
+  artefacts: ArtefactRecord[]
+}
+
+/** Union two artefact lists by `kind` (incoming wins) — merges SSE artefact
+ *  events into the snapshot-seeded list without dropping either source. */
+function mergeArtefacts(
+  existing: ArtefactRecord[] | undefined,
+  incoming: ArtefactRecord[] | undefined,
+): ArtefactRecord[] {
+  const map = new Map<string, ArtefactRecord>()
+  for (const a of existing ?? []) map.set(a.kind, a)
+  for (const a of incoming ?? []) map.set(a.kind, a)
+  return Array.from(map.values())
 }
 
 /** Fallback display for a component_type when the catalogue hasn't loaded yet. */
@@ -157,6 +174,7 @@ function viewFromSnapshot(snap: RunSnapshot): RunView {
     errorMessage: snap.error_message,
     startedAt: snap.started_at,
     durationMs: snap.duration_ms,
+    artefacts: snap.artefacts ?? [],
   }
 }
 
@@ -307,6 +325,7 @@ export default function DesignStudio() {
             stepUrl: prev.stepUrl ?? final.stepUrl,
             verdict: final.verdict ?? prev.verdict,
             narration: terminalNarration(snap.status) ?? prev.narration,
+            artefacts: mergeArtefacts(prev.artefacts, final.artefacts),
           }
         })
         if (snap.duration_ms != null) setElapsedMs(snap.duration_ms)
@@ -348,6 +367,7 @@ export default function DesignStudio() {
           stepUrl: prev?.stepUrl ?? next.stepUrl,
           verdict: next.verdict ?? prev?.verdict ?? null,
           narration: prev?.narration || next.narration,
+          artefacts: mergeArtefacts(prev?.artefacts, next.artefacts),
         }
       })
       loadRunArtefacts(snap.run_id, snap.artefacts)
@@ -392,6 +412,18 @@ export default function DesignStudio() {
           setRun(prev => (prev && prev.runId === runId ? { ...prev, clarificationQuestion: event.question } : prev))
         },
         onArtefact: event => {
+          // Keep the run's full artefact list current so the data-driven M-00004
+          // full-sheet panel sees every kind as it streams in.
+          setRun(prev =>
+            prev && prev.runId === runId
+              ? {
+                  ...prev,
+                  artefacts: mergeArtefacts(prev.artefacts, [
+                    { kind: event.kind, filename: event.filename, url: event.url },
+                  ]),
+                }
+              : prev,
+          )
           applyArtefact(runId, event.kind, event.url)
         },
         onTokens: event => {
@@ -487,6 +519,7 @@ export default function DesignStudio() {
         errorMessage: null,
         startedAt: new Date().toISOString(),
         durationMs: null,
+        artefacts: [],
       })
       setTurns(prev => [
         {
@@ -796,6 +829,14 @@ export default function DesignStudio() {
     if (run?.status === 'failed') setStage('define')
   }, [run?.status])
 
+  // The "Full GA Sheet" panel is M-00004-only. If the user is on it and opens a
+  // different component's run, fall back to the Drawing panel (the tab is gone).
+  useEffect(() => {
+    if (designPanel === 'sheet' && run?.componentType !== M00004_TYPE_ID) {
+      setDesignPanel('drawing')
+    }
+  }, [designPanel, run?.componentType])
+
   const promptMode: PromptMode = pendingQuestion
     ? 'answer'
     : run?.status === 'completed' || turns.some(t => t.status === 'completed')
@@ -1009,10 +1050,15 @@ export default function DesignStudio() {
   )
 
   // ------------------------------------------------------------------ Design
+  // The M-00004 standard box culvert exposes an extra "Full GA Sheet" panel —
+  // the Phase-2 full-sheet review/download surface (ten drawings + STEP parts +
+  // composed PDF + zip bundle). It only appears for that component type.
+  const isM00004 = run?.componentType === M00004_TYPE_ID
   const DESIGN_PANELS: { id: DesignPanel; label: string }[] = [
     { id: 'drawing', label: 'Drawing' },
     { id: 'calc', label: 'Calc Sheet' },
     { id: '3d', label: '3D Model' },
+    ...(isM00004 ? [{ id: 'sheet' as DesignPanel, label: 'Full GA Sheet' }] : []),
   ]
   const designStage = (
     <div className="flex min-h-[28rem] flex-1 flex-col gap-4">
@@ -1063,6 +1109,14 @@ export default function DesignStudio() {
             stepUrl={run?.stepUrl ?? null}
             isRunning={isRunning}
             runFailed={run?.status === 'failed'}
+            hasRun={!!run}
+          />
+        )}
+        {designPanel === 'sheet' && isM00004 && (
+          <M00004SheetPanel
+            runId={run?.runId ?? null}
+            artefacts={run?.artefacts ?? []}
+            isRunning={isRunning}
             hasRun={!!run}
           />
         )}

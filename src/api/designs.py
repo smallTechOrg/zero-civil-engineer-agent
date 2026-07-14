@@ -48,6 +48,36 @@ ARTIFACT_FILES: dict[str, tuple[str, str]] = {
     # Standard-driven components (M-00004) emit one extra artefact: the reportlab
     # drawing sheet, served inline so the browser can open the PDF.
     "m00004_sheet.pdf": ("application/pdf", "inline"),
+    # M-00004 Phase 2 — the full RDSO GA sheet: ten per-diagram DXF/SVG pairs
+    # (DXF attachment, SVG inline), the four multi-body STEP parts (attachment),
+    # the review-stage composed PDF (inline) and the zip bundle (attachment).
+    # Filenames/mimes/dispositions are normative (capability doc Phase 2 table).
+    "elevation.dxf": ("image/vnd.dxf", "attachment"),
+    "elevation.svg": ("image/svg+xml", "inline"),
+    "cross_section.dxf": ("image/vnd.dxf", "attachment"),
+    "cross_section.svg": ("image/svg+xml", "inline"),
+    "plan.dxf": ("image/vnd.dxf", "attachment"),
+    "plan.svg": ("image/svg+xml", "inline"),
+    "curtain_wall.dxf": ("image/vnd.dxf", "attachment"),
+    "curtain_wall.svg": ("image/svg+xml", "inline"),
+    "typical_details.dxf": ("image/vnd.dxf", "attachment"),
+    "typical_details.svg": ("image/svg+xml", "inline"),
+    "return_wall.dxf": ("image/vnd.dxf", "attachment"),
+    "return_wall.svg": ("image/svg+xml", "inline"),
+    "bar_shape_table.dxf": ("image/vnd.dxf", "attachment"),
+    "bar_shape_table.svg": ("image/svg+xml", "inline"),
+    "notations.dxf": ("image/vnd.dxf", "attachment"),
+    "notations.svg": ("image/svg+xml", "inline"),
+    "notes.dxf": ("image/vnd.dxf", "attachment"),
+    "notes.svg": ("image/svg+xml", "inline"),
+    "haunch_table.dxf": ("image/vnd.dxf", "attachment"),
+    "haunch_table.svg": ("image/svg+xml", "inline"),
+    "assembly.step": ("application/step", "attachment"),
+    "box.step": ("application/step", "attachment"),
+    "curtain_wall.step": ("application/step", "attachment"),
+    "return_wall.step": ("application/step", "attachment"),
+    "m00004_ga_sheet.pdf": ("application/pdf", "inline"),
+    "m00004_bundle.zip": ("application/zip", "attachment"),
 }
 
 

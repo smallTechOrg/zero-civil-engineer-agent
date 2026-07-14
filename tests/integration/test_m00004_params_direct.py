@@ -137,6 +137,42 @@ def test_params_direct_run_completes_with_zero_llm_intake(
     kinds = {a["kind"] for a in get_artifacts(run_id)}
     assert "m00004_sheet" in kinds
 
+    # --- Phase 2 slice (e) wiring: the full GA package flows through the graph ---
+    # The ten per-diagram DXF/SVG pairs are deterministic (ezdxf) — always emitted
+    # by the draw node via the extra-key auto-emit + _ARTIFACT_MIME registration.
+    diagram_kinds = {
+        f"{d}_{ext}"
+        for d in (
+            "elevation", "cross_section", "plan", "curtain_wall", "typical_details",
+            "return_wall", "bar_shape_table", "notations", "notes", "haunch_table",
+        )
+        for ext in ("dxf", "svg")
+    }
+    assert diagram_kinds <= kinds, diagram_kinds - kinds
+    # A couple of the per-diagram DXFs round-trip through ezdxf.
+    assert ezdxf.readfile(art_dir / "elevation.dxf") is not None
+    assert ezdxf.readfile(art_dir / "cross_section.dxf") is not None
+
+    # The multi-body STEP parts flow through the model3d emit-loop (loops the
+    # returned dict, no longer the hardcoded pair).
+    step_kinds = {"assembly_step", "box_step", "curtain_wall_step", "return_wall_step"}
+    assert step_kinds <= kinds, step_kinds - kinds
+    for name in ("assembly.step", "box.step", "curtain_wall.step", "return_wall.step"):
+        part = art_dir / name
+        assert part.exists() and part.stat().st_size > 0, name
+        assert part.read_bytes()[:13] == b"ISO-10303-21;", name
+
+    # The review-stage composed sheet + zip bundle (guarded, non-fatal hook).
+    assert {"m00004_ga_sheet", "m00004_bundle"} <= kinds
+    ga_pdf = art_dir / "m00004_ga_sheet.pdf"
+    assert ga_pdf.exists() and ga_pdf.stat().st_size > 0
+    assert ga_pdf.read_bytes()[:4] == b"%PDF"
+    bundle = art_dir / "m00004_bundle.zip"
+    assert bundle.exists() and bundle.stat().st_size > 0
+    import zipfile
+
+    assert zipfile.is_zipfile(bundle)
+
 
 def test_canonical_nl_culvert_still_routes_via_understand(
     require_gemini, drawing_ready, make_session, run_and_wait, get_run,

@@ -135,3 +135,148 @@ Reference: [architecture.md → Params-direct intake path](../architecture.md#pa
 - [ ] The design library row and type-summary panel show the selected `config_id`, thickness, haunch and derived barrel length, each PROVISIONAL where catalogue-derived.
 - [ ] `m00004_sheet.pdf` is in the `ARTIFACT_FILES` whitelist (`application/pdf`, inline); a request for it on a run that has not generated it returns 404, and a non-whitelisted filename returns 400 (existing behaviour, unchanged).
 - [ ] **No regression:** every existing component (box_culvert, retaining_wall, and the six breadth-first types) and every existing unit/validation/integration/E2E test stays green; the NL path is byte-identical (routes to `understand`).
+
+---
+
+## Phase 2 — Full RDSO/M-00004 GA sheet (all six drawings + STEP parts + composed sheet + zip)
+
+> **Scope.** Phase 1 delivered ONE combined GA (`ga.dxf`/`ga.svg`), one fused 3D solid (`model.glb`/`model.step`) and one single-view PDF (`m00004_sheet.pdf`). Phase 2 expands the drawing deliverable to the **full M-00004 GA sheet**: **one DXF+SVG per diagram** (six drawings + four detail blocks/tables), **genuinely-3D STEP parts** (assembly + box + curtain/drop wall + return wall), and a **review-stage composed PDF laid out like the real M-00004 sheet + a `.zip` bundle** of every per-diagram DXF + STEP. It stays **100% deterministic parametric** (ezdxf 2D, build123d 3D, matplotlib+reportlab for the composed sheet — **NO LLM CAD**), every value sourced from `M00004Geometry`/`M00004Params`, and the **PROVISIONAL / NOT-FOR-CONSTRUCTION** discipline is preserved on every new surface. **All Phase-1 artefacts (`ga.dxf`/`ga.svg`/`model.glb`/`model.step`/`m00004_sheet.pdf`) keep working unchanged** — the Phase-2 outputs are additive. The params-direct pipeline + memo-narration-non-fatal behaviour are preserved.
+
+### Materials — DEFAULT changes (normative, foundation slice)
+
+| Item | Phase-1 default | **Phase-2 default** | Rule |
+|------|-----------------|---------------------|------|
+| `steel_grade` | `Fe500` | **`Fe415`** | RDSO/M-00004 uses Fe415. Still user-overridable to Fe500. |
+| `concrete_grade` | `M30` (static) | **`None` = derive** | `None` ⇒ resolve per exposure/size rule below. A set value overrides. |
+| Resolved concrete grade (derivation) | — | **`M-35`** (typical) | `very_severe` exposure → **M40**; else `max(span, height) < 1 m` → **M30**; else → **M35**. (Given `clear_span_m`/`clear_height_m` are `ge=1.0`, the M30 branch is unreachable in-range and documented as such.) |
+
+- **Shared enum change (owned by the foundation slice, additive & regression-safe):** add member **`M40 = "M40"`** to `domain.culvert.ConcreteGrade` (currently `M25`/`M30`/`M35`). Additive only — no existing component defaults to or selects M40, so the retaining-wall / culvert / breadth-first types are unaffected and the regression suite stays green. A component-local enum is **not** used; the shared enum is extended because the addition is safe. This one-line edit is owned by the **foundation slice (a)** — not the wiring slice — so `params.py`/`sizing.py` can reference `ConcreteGrade.M40` within their own slice and no two slices touch `domain/culvert.py`.
+- The resolved grade is stored on geometry as `concrete_grade_resolved` (string) and is the single value the drawings, notes, title blocks and composed sheet render. `resolve_concrete_grade(params)` lives in `sizing.py` and records the choice as a PROVISIONAL `Assumption`.
+
+### New `M00004Params` fields (normative — FIX these; wave-2 slices build against this table)
+
+| Field | Type | Required | Default | Range / role |
+|-------|------|----------|---------|--------------|
+| concrete_grade | `ConcreteGrade \| None` | no | **`None`** | `None` = derive (M35 typical / M40 very-severe / M30 below 1 m). Overridable to M25/M30/M35/M40. |
+| steel_grade | `SteelGrade` | no | **`Fe415`** | Fe415 / Fe500. |
+| exposure | `ExposureCondition` | no | **`ExposureCondition.SEVERE`** | New **component-local** enum in `params.py`: `MODERATE="moderate"`, `SEVERE="severe"`, `VERY_SEVERE="very_severe"`. Drives the M40 derivation branch. Title-block/notes + concrete derivation only. |
+
+All other `M00004Params` fields are unchanged from Phase 1.
+
+### New engine constants (`src/components/m00004_box_culvert/params.py`) — normative
+
+| Constant | Value | Meaning |
+|----------|-------|---------|
+| WEARING_COURSE_THICKNESS_MM | `150.0` | Wearing course on the top slab / formation. |
+| PCC_THICKNESS_MM | `150.0` | PCC levelling course under the box. |
+| STONE_PITCHING_THICKNESS_MM | `300.0` | Stone pitching w/ cement grouting on the embankment slopes. |
+| BASE_COURSE_THICKNESS_MM | `150.0` | Base course under the pitching/apron (the "150 base course"). |
+| BED_SLOPE_RUN | `100.0` | Bed slope 1 in `BED_SLOPE_RUN` (1 in 100). |
+| WEEP_HOLE_DIA_MM | `75.0` | 75-dia PVC weep holes. |
+| WEEP_HOLE_SPACING_MM | `1000.0` | Weep holes @ 1000 c/c. |
+| DROP_WALL_DEPTH_MM | `1500.0` | Drop-wall depth below bed at the outlet (deeper than the curtain wall's 1000; a drawing/detail value). |
+| HFL_ABOVE_BED_FACTOR | `0.75` | HFL above bed = factor × clear height (PROVISIONAL assumption; hydraulics not verified). |
+| RETURN_WALL_BASE_FACTOR | `0.5` | Return-wall base width = factor × outer height (PROVISIONAL taper basis). |
+
+### New `M00004Geometry` fields (normative — FIX these; single source for every new diagram/model)
+
+| Field | Type | Default | Role |
+|-------|------|---------|------|
+| concrete_grade_resolved | `str` | — | Resolved grade value (e.g. `"M35"`) — the one grade rendered everywhere. |
+| cushion_mm | `float` | — | `cushion_m × 1000` — fill over the top slab (elevation). |
+| formation_width_mm | `float` | — | `formation_width_m × 1000` — formation level width (elevation). |
+| side_slope_h_per_v | `float` | — | Echo of the param — earth-bank slope (elevation) + wing-wall splay (plan). |
+| wearing_course_thickness_mm | `float` | `WEARING_COURSE_THICKNESS_MM` | Elevation/notes. |
+| pcc_thickness_mm | `float` | `PCC_THICKNESS_MM` | Elevation/notes. |
+| stone_pitching_thickness_mm | `float` | `STONE_PITCHING_THICKNESS_MM` | Elevation slopes. |
+| base_course_thickness_mm | `float` | `BASE_COURSE_THICKNESS_MM` | Elevation. |
+| bed_slope_run | `float` | `BED_SLOPE_RUN` | Elevation bed-slope callout (1 in 100). |
+| weep_hole_dia_mm | `float` | `WEEP_HOLE_DIA_MM` | Plan + typical details. |
+| weep_hole_spacing_mm | `float` | `WEEP_HOLE_SPACING_MM` | Plan + typical details. |
+| drop_wall_depth_mm | `float` | `DROP_WALL_DEPTH_MM` | Curtain/drop-wall section + elevation. |
+| hfl_above_bed_mm | `float` | — | Derived `HFL_ABOVE_BED_FACTOR × clear_height_mm` (PROVISIONAL). Elevation HFL line. |
+| return_wall_base_width_mm | `float` | — | Derived `RETURN_WALL_BASE_FACTOR × outer_height_mm` (PROVISIONAL). Return-wall diagram. |
+| return_wall_top_width_mm | `float` | — | `= thickness_mm` — return-wall taper top width. |
+
+All Phase-1 `M00004Geometry` fields are unchanged. New fields are populated in `sizing.py` (foundation slice) so every diagram/model/compose slice reads them from one source.
+
+### Deliverable 1 — one DXF + SVG per diagram (NOT one combined DXF)
+
+`drawing.py` is refactored into an **aggregator**: it still returns the Phase-1 `{ga_dxf, ga_svg, m00004_sheet}` (byte-behaviour preserved — `ga.dxf` remains the combined section+plan+title GA) **and** additionally returns a `<kind>_dxf` + `<kind>_svg` pair per diagram below, each authored by its own module under a new `drawings/` subpackage and each rendered to SVG via the shared `drawing.svg_render.render_svg`. Every value comes from `M00004Geometry`; every drawing carries the PROVISIONAL caption. `module.draw()` already returns the aggregator dict verbatim, so it needs no change for the new keys.
+
+| # | Diagram | Module | Content (all dimensioned, from geometry) |
+|---|---------|--------|------------------------------------------|
+| 1 | Sectional Elevation at X-Y | `drawings/elevation.py` | Longitudinal section along the waterway: box under the embankment; C.L. of track + formation level + `formation_width_mm`; earth banks at `side_slope_h_per_v` (H:V); HFL line at `hfl_above_bed_mm`; bed level + bed slope `1 in bed_slope_run`; `stone_pitching_thickness_mm` pitching w/ cement grouting; hand-packed boulders; wing/return + drop/curtain walls each end; `base_course_thickness_mm` base course. |
+| 2 | Cross Section of R.C.C. Box | `drawings/cross_section.py` | The Phase-1 `_draw_section` refactored into its own module with the **a1..h bars in position** (reuses `reinforcement.bar_layout`); identical geometry/behaviour. |
+| 3 | Plan | `drawings/plan.py` | Promotes the Phase-1 part-plan: barrel opening, wing/return walls splaying along the embankment slope both ends, aprons, curtain & drop walls, `weep_hole_dia_mm` PVC weep holes @ `weep_hole_spacing_mm` c/c. |
+| 4 | Section of Curtain / Drop Wall | `drawings/curtain_wall.py` | Detail through curtain + drop wall: `curtain_thickness_mm`, `curtain_depth_mm`, `drop_wall_depth_mm` key below bed, reinforcement. |
+| 5 | Typical Details at A & B | `drawings/typical_details.py` | Reinforcement-placement details: weep holes (75-dia PVC @ 1000 c/c) + earth retainer + skin reinforcement + main reinforcement + distributors in top/bottom slabs + haunch bars. |
+| 6 | Return Wall | `drawings/return_wall.py` | Section/elevation of the return wall: tapering profile (`return_wall_base_width_mm` → `return_wall_top_width_mm`), base width, reinforcement. |
+| — | Reinforcement-for-Box bar-bending SHAPE table | `drawings/bar_shape_table.py` | a1..h bent-bar **shapes + length formulae** (distinct from the existing dia@spacing schedule); reuses `reinforcement.py` + `bar_schedule`. |
+| — | Notations glossary | `drawings/notations.py` | Legend mapping each mark/notation to its member/face. |
+| — | Notes block | `drawings/notes.py` | Standard M-00004 notes incl. grades, cover, wearing course, PCC, pitching, bed slope, "ALL DIMENSIONS IN mm", PROVISIONAL / NOT-FOR-CONSTRUCTION. |
+| — | B×B Haunch table | `drawings/haunch_table.py` | Haunch `B×B` schedule vs box size. |
+
+Each of the ten produces a `.dxf` (ezdxf) **and** a `.svg`. `reinforcement.py` (a1..h layout) stays in place and is reused by cross-section + bar-shape-table.
+
+### Deliverable 2 — genuinely-3D STEP parts (build123d, NOT cadquery)
+
+`model3d.py` is refactored to build and export, each part self-verifying its own closed-form sub-volume before export (as the Phase-1 `_verify` does):
+
+| Part | Solid | Closed-form basis |
+|------|-------|-------------------|
+| Full assembly | box barrel + wing/return walls + apron + curtain/drop walls, exported as a build123d **assembly/compound** (multiple bodies) | `analytic_concrete_volume_m3` (total). |
+| Box | barrel only (outer prism − haunched opening) | barrel term. |
+| Curtain / drop wall | the two curtain/drop walls | curtains term. |
+| Return wall | the four wing/return-wall bands | walls term. |
+
+- The Phase-1 **fused** `model.glb` (viewer) + `model.step` (single fused solid) are **kept unchanged** for backward compatibility. `assembly.step` is a NEW, genuinely multi-body assembly (distinct from the fused `model.step`). Pure-2D outputs (plan, bar-shape table, notations, notes, haunch table) get **NO STEP**.
+- `model3d()` returns `{model_glb, model_step, assembly_step, box_step, curtain_wall_step, return_wall_step}`. The graph `model3d` node is extended to emit **whatever keys `model3d()` returns** (backward-compatible loop over the returned dict rather than the hardcoded `("model_glb","model_step")` tuple), so existing components (which return only `model_glb`/`model_step`) are byte-identical.
+
+### Deliverable 3 — review-stage composed sheet + zip bundle
+
+- **Composed PDF `m00004_ga_sheet.pdf`** (`compose.py`, using **matplotlib + ezdxf's matplotlib backend** — matplotlib is already a repo dependency; **no new dep**): renders each on-disk per-diagram **DXF** into panels arranged in the M-00004 GA layout (the six drawings positioned as on the real sheet) + notations glossary + notes block + bar-bending table + haunch table + material specs + RDSO title block + the bold PROVISIONAL / NOT-FOR-CONSTRUCTION strip.
+- **Bundle `m00004_bundle.zip`** (`bundle.py`, stdlib `zipfile`): zips every individual per-diagram **DXF** + every **STEP** part found on disk for the run (whatever is present — robust if the non-fatal 3D step produced no STEP files).
+- **Emission point — the REVIEW node (documented, precise):** both are produced by an M-00004-only `module.compose(params, geometry, out_dir, run_id) -> {m00004_ga_sheet, m00004_bundle}` hook, invoked in the `review` node inside its **own non-fatal try/except** (mirroring the `model3d` non-fatal policy) and guarded by `getattr(module, "compose", None)` so **no other component is affected**. It runs at review because by then `draw` (2D — always on disk) and `model3d` (STEP — possibly absent, non-fatal) have completed; it is independent of the proof-check and of the non-fatal 3D step. A compose failure emits one `warning` event and the individual diagrams/STEP files remain downloadable — the run and verdict are unaffected.
+
+### New artefact kinds → filenames → mime (normative — slices (e)+(f) wire these exact strings)
+
+| Kind | Filename | `_ARTIFACT_MIME` (graph) | `ARTIFACT_FILES` (api) — mime, disposition |
+|------|----------|--------------------------|--------------------------------------------|
+| elevation_dxf | `elevation.dxf` | `image/vnd.dxf` | `image/vnd.dxf`, attachment |
+| elevation_svg | `elevation.svg` | `image/svg+xml` | `image/svg+xml`, inline |
+| cross_section_dxf | `cross_section.dxf` | `image/vnd.dxf` | `image/vnd.dxf`, attachment |
+| cross_section_svg | `cross_section.svg` | `image/svg+xml` | `image/svg+xml`, inline |
+| plan_dxf | `plan.dxf` | `image/vnd.dxf` | `image/vnd.dxf`, attachment |
+| plan_svg | `plan.svg` | `image/svg+xml` | `image/svg+xml`, inline |
+| curtain_wall_dxf | `curtain_wall.dxf` | `image/vnd.dxf` | `image/vnd.dxf`, attachment |
+| curtain_wall_svg | `curtain_wall.svg` | `image/svg+xml` | `image/svg+xml`, inline |
+| typical_details_dxf | `typical_details.dxf` | `image/vnd.dxf` | `image/vnd.dxf`, attachment |
+| typical_details_svg | `typical_details.svg` | `image/svg+xml` | `image/svg+xml`, inline |
+| return_wall_dxf | `return_wall.dxf` | `image/vnd.dxf` | `image/vnd.dxf`, attachment |
+| return_wall_svg | `return_wall.svg` | `image/svg+xml` | `image/svg+xml`, inline |
+| bar_shape_table_dxf | `bar_shape_table.dxf` | `image/vnd.dxf` | `image/vnd.dxf`, attachment |
+| bar_shape_table_svg | `bar_shape_table.svg` | `image/svg+xml` | `image/svg+xml`, inline |
+| notations_dxf | `notations.dxf` | `image/vnd.dxf` | `image/vnd.dxf`, attachment |
+| notations_svg | `notations.svg` | `image/svg+xml` | `image/svg+xml`, inline |
+| notes_dxf | `notes.dxf` | `image/vnd.dxf` | `image/vnd.dxf`, attachment |
+| notes_svg | `notes.svg` | `image/svg+xml` | `image/svg+xml`, inline |
+| haunch_table_dxf | `haunch_table.dxf` | `image/vnd.dxf` | `image/vnd.dxf`, attachment |
+| haunch_table_svg | `haunch_table.svg` | `image/svg+xml` | `image/svg+xml`, inline |
+| assembly_step | `assembly.step` | `application/step` | `application/step`, attachment |
+| box_step | `box.step` | `application/step` | `application/step`, attachment |
+| curtain_wall_step | `curtain_wall.step` | `application/step` | `application/step`, attachment |
+| return_wall_step | `return_wall.step` | `application/step` | `application/step`, attachment |
+| m00004_ga_sheet | `m00004_ga_sheet.pdf` | `application/pdf` | `application/pdf`, inline |
+| m00004_bundle | `m00004_bundle.zip` | `application/zip` | `application/zip`, attachment |
+
+The Phase-1 kinds/filenames (`ga_dxf`/`ga.dxf`, `ga_svg`/`ga.svg`, `model_glb`/`model.glb`, `model_step`/`model.step`, `m00004_sheet`/`m00004_sheet.pdf`) are unchanged. DB `artifacts.kind`/`filename` are free-text — **no migration**.
+
+### Phase 2 Success Criteria
+
+- [ ] `module.draw(...)` returns all Phase-1 keys PLUS the ten `<diagram>_dxf`/`<diagram>_svg` pairs; each file is emitted, opens via `ezdxf.readfile`, and contains the expected key entities (e.g. `elevation.dxf` has the HFL line + bed-slope callout; `cross_section.dxf` has the a1..h bars; `plan.dxf` has weep holes @ 1000 c/c).
+- [ ] `model3d(...)` returns `assembly_step`/`box_step`/`curtain_wall_step`/`return_wall_step` in addition to `model_glb`/`model_step`; each STEP opens in FreeCAD and each part's built volume matches its closed-form sub-volume within tolerance.
+- [ ] At review, `m00004_ga_sheet.pdf` (valid non-empty `application/pdf`, inline) lays out the six drawings + notations + notes + bar-bending + haunch tables + title block, every catalogue value PROVISIONAL; `m00004_bundle.zip` (valid `application/zip`) contains every per-diagram DXF + STEP present on disk.
+- [ ] Materials: default steel = `Fe415`; `concrete_grade=None` + normal exposure resolves `concrete_grade_resolved="M35"`; `exposure="very_severe"` resolves `"M40"`; an explicit `concrete_grade` overrides; `ConcreteGrade.M40` added additively with **no** regression in any other component.
+- [ ] Every new drawing/model/table generator has a unit test (geometry sanity + file emitted + key entities present); api/artifact tests cover the new whitelist entries; the `model3d` emit-loop and the review compose hook have graph/integration tests.
+- [ ] **No regression:** Phase-1 artefacts (`ga.dxf`/`ga.svg`/`model.glb`/`model.step`/`m00004_sheet.pdf`) unchanged; every existing unit/validation/integration/E2E test stays green; PROVISIONAL / NOT-FOR-CONSTRUCTION captions on every new surface.

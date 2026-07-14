@@ -15,6 +15,8 @@ component); every catalogue-derived value is PROVISIONAL and flagged as such.
 
 from __future__ import annotations
 
+from enum import Enum
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from domain.culvert import ConcreteGrade, SteelGrade
@@ -35,6 +37,31 @@ CURTAIN_DEPTH_MM = 1000.0
 
 # Nominal clear cover to reinforcement (mm) — assumption for the bar layout.
 CLEAR_COVER_MM = 50.0
+
+# --------------------------------------------------------------------------- Phase-2 engine constants
+# Standard RDSO/M-00004 GA-sheet detailing constants (elevation / plan / details).
+# Every derived value backed by these is PROVISIONAL (verify against RDSO/M-00004).
+WEARING_COURSE_THICKNESS_MM = 150.0  # wearing course on the top slab / formation
+PCC_THICKNESS_MM = 150.0  # PCC levelling course under the box
+STONE_PITCHING_THICKNESS_MM = 300.0  # stone pitching w/ cement grouting on the slopes
+BASE_COURSE_THICKNESS_MM = 150.0  # base course under the pitching/apron
+BED_SLOPE_RUN = 100.0  # bed slope 1 in BED_SLOPE_RUN (1 in 100)
+WEEP_HOLE_DIA_MM = 75.0  # 75-dia PVC weep holes
+WEEP_HOLE_SPACING_MM = 1000.0  # weep holes @ 1000 c/c
+DROP_WALL_DEPTH_MM = 1500.0  # drop-wall depth below bed at the outlet
+HFL_ABOVE_BED_FACTOR = 0.75  # HFL above bed = factor x clear height (PROVISIONAL; hydraulics unverified)
+RETURN_WALL_BASE_FACTOR = 0.5  # return-wall base width = factor x outer height (PROVISIONAL taper basis)
+
+
+class ExposureCondition(str, Enum):
+    """Component-local exposure class — drives the M40 concrete-grade derivation.
+
+    Title-block / notes + concrete-grade derivation only; not a structural input.
+    """
+
+    MODERATE = "moderate"
+    SEVERE = "severe"
+    VERY_SEVERE = "very_severe"
 
 
 class M00004Params(BaseModel):
@@ -65,9 +92,20 @@ class M00004Params(BaseModel):
         default=2.0, ge=0.0, description="Embankment side slope H:V — drives barrel length"
     )
 
-    # --- materials (title-block / notes only) ---
-    concrete_grade: ConcreteGrade = Field(default=ConcreteGrade.M30)
-    steel_grade: SteelGrade = Field(default=SteelGrade.FE500)
+    # --- materials (title-block / notes + concrete-grade derivation) ---
+    concrete_grade: ConcreteGrade | None = Field(
+        default=None,
+        description="None = derive per exposure/size (M35 typical / M40 very-severe / "
+        "M30 below 1 m); a set value overrides. M25/M30/M35/M40.",
+    )
+    steel_grade: SteelGrade = Field(
+        default=SteelGrade.FE415, description="Fe415 (RDSO/M-00004 default) or Fe500"
+    )
+    exposure: ExposureCondition = Field(
+        default=ExposureCondition.SEVERE,
+        description="Exposure class (moderate / severe / very_severe) — drives the M40 "
+        "concrete-grade derivation branch; title-block/notes + derivation only",
+    )
 
 
 class M00004Geometry(BaseModel):
@@ -97,6 +135,52 @@ class M00004Geometry(BaseModel):
     apron_thickness_mm: float = Field(default=APRON_THICKNESS_MM, description="Apron slab thickness, mm")
     curtain_thickness_mm: float = Field(default=CURTAIN_THICKNESS_MM, description="Curtain-wall thickness, mm")
     curtain_depth_mm: float = Field(default=CURTAIN_DEPTH_MM, description="Curtain-wall depth below bed, mm")
+
+    # --- Phase-2 GA-sheet fields (single source for every new diagram/model) ---
+    concrete_grade_resolved: str = Field(
+        description="Resolved concrete grade value (e.g. 'M35') — the one grade rendered everywhere"
+    )
+    cushion_mm: float = Field(description="cushion_m x 1000 — fill over the top slab (elevation), mm")
+    formation_width_mm: float = Field(
+        description="formation_width_m x 1000 — formation level width (elevation), mm"
+    )
+    side_slope_h_per_v: float = Field(
+        description="Echo of the param — earth-bank slope (elevation) + wing-wall splay (plan)"
+    )
+    wearing_course_thickness_mm: float = Field(
+        default=WEARING_COURSE_THICKNESS_MM, description="Wearing course on the top slab / formation, mm"
+    )
+    pcc_thickness_mm: float = Field(
+        default=PCC_THICKNESS_MM, description="PCC levelling course under the box, mm"
+    )
+    stone_pitching_thickness_mm: float = Field(
+        default=STONE_PITCHING_THICKNESS_MM, description="Stone pitching on the embankment slopes, mm"
+    )
+    base_course_thickness_mm: float = Field(
+        default=BASE_COURSE_THICKNESS_MM, description="Base course under the pitching/apron, mm"
+    )
+    bed_slope_run: float = Field(
+        default=BED_SLOPE_RUN, description="Bed slope 1 in bed_slope_run (elevation callout)"
+    )
+    weep_hole_dia_mm: float = Field(
+        default=WEEP_HOLE_DIA_MM, description="75-dia PVC weep holes (plan + typical details), mm"
+    )
+    weep_hole_spacing_mm: float = Field(
+        default=WEEP_HOLE_SPACING_MM, description="Weep holes @ 1000 c/c (plan + typical details), mm"
+    )
+    drop_wall_depth_mm: float = Field(
+        default=DROP_WALL_DEPTH_MM, description="Drop-wall depth below bed at the outlet, mm"
+    )
+    hfl_above_bed_mm: float = Field(
+        description="Derived HFL_ABOVE_BED_FACTOR x clear_height_mm (PROVISIONAL) — elevation HFL line, mm"
+    )
+    return_wall_base_width_mm: float = Field(
+        description="Derived RETURN_WALL_BASE_FACTOR x outer_height_mm (PROVISIONAL) — return-wall base, mm"
+    )
+    return_wall_top_width_mm: float = Field(
+        description="= thickness_mm — return-wall taper top width, mm"
+    )
+
     provisional_flags: list[str] = Field(
         default_factory=list,
         description="Config-selection / extrapolation PROVISIONAL flags (empty = exact standard config)",

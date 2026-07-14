@@ -56,7 +56,7 @@ def reference_lines(params: M00004Params, geometry: M00004Geometry) -> list[str]
         (
             f"RDSO/M-00004 standard single box culvert - entered opening "
             f"{params.clear_span_m:g} x {params.clear_height_m:g} m, fill {params.cushion_m:g} m; "
-            f"selected standard config {geometry.config_id}; {params.concrete_grade.value} concrete / "
+            f"selected standard config {geometry.config_id}; {geometry.concrete_grade_resolved} concrete / "
             f"{params.steel_grade.value} steel."
         ),
         (
@@ -127,7 +127,7 @@ def _build_items(
             "RDSO/M-00004 standard single box culvert / IRS Concrete Bridge Code",
             "The box must reproduce a published M-00004 standard config with a stated, "
             "verifiable basis; catalogue values must be flagged PROVISIONAL, not passed silently.",
-            f"reproduced standard config {geometry.config_id}; {params.concrete_grade.value} / "
+            f"reproduced standard config {geometry.config_id}; {geometry.concrete_grade_resolved} / "
             f"{params.steel_grade.value}",
             "standard basis stated; every catalogue value flagged PROVISIONAL",
             SEVERITY_OBSERVATION,

@@ -28,6 +28,7 @@ class ConcreteGrade(str, Enum):
     M25 = "M25"
     M30 = "M30"
     M35 = "M35"
+    M40 = "M40"  # additive (RDSO/M-00004 very-severe exposure); no existing component selects it
 
 
 class SteelGrade(str, Enum):

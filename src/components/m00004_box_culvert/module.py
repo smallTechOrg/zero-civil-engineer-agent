@@ -142,6 +142,25 @@ class M00004BoxCulvertComponent:
 
         return model3d(coerce(M00004Geometry, geometry), out_dir)
 
+    # ---- review-stage composed GA sheet + zip bundle (M-00004-only hook) ----
+    def compose(self, params, geometry, out_dir: Path, run_id: str) -> dict[str, Path]:
+        """Compose the RDSO GA sheet PDF + the zip bundle from on-disk outputs.
+
+        Invoked (guarded, non-fatal) in the graph `review` node after `draw`
+        (2D — always on disk) and `model3d` (STEP — possibly absent) complete.
+        Delegates to `compose.compose`, which reads the per-diagram DXFs + STEP
+        files from `out_dir` and degrades gracefully if any input is missing.
+        Returns `{"m00004_ga_sheet": Path, "m00004_bundle": Path}`.
+        """
+        from components.m00004_box_culvert import compose as _compose
+
+        return _compose.compose(
+            coerce(M00004Params, params),
+            coerce(M00004Geometry, geometry),
+            out_dir,
+            run_id=run_id,
+        )
+
     # ---- IR-protocol review spine ----
     def proof_check(
         self, *, params, geometry, analysis, checks, ga_dxf_path: Path, out_dir: Path

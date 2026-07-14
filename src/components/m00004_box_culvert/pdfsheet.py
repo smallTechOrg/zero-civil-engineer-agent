@@ -73,7 +73,7 @@ def generate_sheet(
                    x1=_PAGE_W - _MARGIN - 8, y1=_PAGE_H - _MARGIN - 20)
     _draw_notations(c, x0=mid_x + 10, y0=_PAGE_H * 0.30,
                     x1=_PAGE_W - _MARGIN - 8, y1=_PAGE_H * 0.53)
-    _draw_notes(c, params, x0=mid_x + 10, y0=_MARGIN + 96,
+    _draw_notes(c, params, geometry, x0=mid_x + 10, y0=_MARGIN + 96,
                 x1=_PAGE_W - _MARGIN - 8, y1=_PAGE_H * 0.285)
     _draw_title_block(c, params, geometry, run_id, drawing_date,
                       x0=_MARGIN + 8, y0=_MARGIN + 8, x1=_PAGE_W - _MARGIN - 8, y1=_MARGIN + 92)
@@ -298,11 +298,13 @@ def _draw_notations(c: canvas.Canvas, *, x0, y0, x1, y1) -> None:
 
 
 # --------------------------------------------------------------------------- (5) notes
-def _draw_notes(c: canvas.Canvas, params: M00004Params, *, x0, y0, x1, y1) -> None:
+def _draw_notes(
+    c: canvas.Canvas, params: M00004Params, geometry: M00004Geometry, *, x0, y0, x1, y1
+) -> None:
     _panel(c, "5. NOTES", x0, y0, x1, y1)
     notes = [
         "1. ALL DIMENSIONS IN mm UNLESS NOTED.",
-        f"2. CONCRETE {params.concrete_grade.value}; REINFORCEMENT {params.steel_grade.value}.",
+        f"2. CONCRETE {geometry.concrete_grade_resolved}; REINFORCEMENT {params.steel_grade.value}.",
         f"3. CLEAR COVER TO REINFORCEMENT {CLEAR_COVER_MM:g} mm (assumed).",
         "4. LAP / DEVELOPMENT LENGTHS PER IRS CONCRETE BRIDGE CODE.",
         "5. HAUNCHES 45 DEG AT ALL FOUR INNER CORNERS.",
@@ -343,7 +345,7 @@ def _draw_title_block(
     lines = [
         f"Entered box: {params.clear_span_m:g} x {params.clear_height_m:g} m, fill {params.cushion_m:g} m"
         f"   |   Selected config: {g.config_id}",
-        f"Materials: {params.concrete_grade.value} concrete / {params.steel_grade.value} steel"
+        f"Materials: {g.concrete_grade_resolved} concrete / {params.steel_grade.value} steel"
         f"   |   t {g.thickness_mm:g} mm, haunch {g.haunch_mm:g} mm, barrel {g.barrel_length_mm:g} mm",
         f"Scale: N.T.S.   |   Date: {drawing_date.isoformat()}   |   Run: {run_id or '-'}   |   Sheet 1 of 1",
     ]

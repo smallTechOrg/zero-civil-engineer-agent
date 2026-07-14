@@ -50,6 +50,35 @@ _ARTIFACT_MIME = {
     # Standard-driven components (e.g. M-00004) return one extra artefact kind
     # beyond the fixed set — the reportlab standard drawing sheet.
     "m00004_sheet": "application/pdf",
+    # M-00004 Phase 2 — the full RDSO GA sheet: ten per-diagram DXF/SVG pairs,
+    # the four multi-body STEP parts, and the review-stage composed PDF + zip
+    # bundle. Filenames/mimes are normative (capability doc Phase 2 table).
+    "elevation_dxf": "image/vnd.dxf",
+    "elevation_svg": "image/svg+xml",
+    "cross_section_dxf": "image/vnd.dxf",
+    "cross_section_svg": "image/svg+xml",
+    "plan_dxf": "image/vnd.dxf",
+    "plan_svg": "image/svg+xml",
+    "curtain_wall_dxf": "image/vnd.dxf",
+    "curtain_wall_svg": "image/svg+xml",
+    "typical_details_dxf": "image/vnd.dxf",
+    "typical_details_svg": "image/svg+xml",
+    "return_wall_dxf": "image/vnd.dxf",
+    "return_wall_svg": "image/svg+xml",
+    "bar_shape_table_dxf": "image/vnd.dxf",
+    "bar_shape_table_svg": "image/svg+xml",
+    "notations_dxf": "image/vnd.dxf",
+    "notations_svg": "image/svg+xml",
+    "notes_dxf": "image/vnd.dxf",
+    "notes_svg": "image/svg+xml",
+    "haunch_table_dxf": "image/vnd.dxf",
+    "haunch_table_svg": "image/svg+xml",
+    "assembly_step": "application/step",
+    "box_step": "application/step",
+    "curtain_wall_step": "application/step",
+    "return_wall_step": "application/step",
+    "m00004_ga_sheet": "application/pdf",
+    "m00004_bundle": "application/zip",
 }
 _ARTIFACT_ORDER = ("ga_dxf", "ga_svg")
 
@@ -684,8 +713,11 @@ def model3d(state: AgentState) -> dict:
         out_dir = _artifacts_dir(state)
         _narrate(state, "Building the 3D solid — GLB for the viewer, STEP for CAD…")
         paths = module.model3d(state["geometry"], out_dir)
-        for kind in ("model_glb", "model_step"):
-            _emit_artifact(state, artefacts, kind, paths[kind], "model3d")
+        # Emit WHATEVER keys the module returns — components that return only the
+        # fixed `model_glb`/`model_step` pair are byte-identical; M-00004 also
+        # returns the multi-body STEP parts (assembly/box/curtain_wall/return_wall).
+        for kind, path in paths.items():
+            _emit_artifact(state, artefacts, kind, path, "model3d")
         return {"artefacts": artefacts}
     except Exception as exc:  # never fatal, never an `error` state
         _log(state, "model3d").error("model3d_failed", error=str(exc))
@@ -780,6 +812,36 @@ def review(state: AgentState) -> dict:
         memo_path = out_dir / proof.memo_filename
         memo_path.write_text(memo_md, encoding="utf-8")
         _emit_artifact(state, artefacts, proof.memo_kind, memo_path, "review")
+
+        # Review-stage composed sheet + zip bundle — an M-00004-ONLY hook,
+        # guarded by getattr so no other component is affected. NON-FATAL BY
+        # DESIGN (mirrors the model3d policy): a compose failure logs, publishes
+        # ONE `warning` event, and the run/verdict continue — the individual
+        # per-diagram DXFs + STEP parts remain downloadable. It runs here because
+        # by review both `draw` (2D — always on disk) and `model3d` (STEP —
+        # possibly absent, non-fatal) have completed; it is independent of the
+        # proof-check above.
+        compose_hook = getattr(module, "compose", None)
+        if callable(compose_hook):
+            try:
+                composed = compose_hook(
+                    state["params"], state["geometry"], out_dir, state["run_id"]
+                )
+                for kind, path in composed.items():
+                    _emit_artifact(state, artefacts, kind, path, "review")
+            except Exception as exc:  # never fatal, never an `error` state
+                _log(state, "review").error("compose_failed", error=str(exc))
+                publish(
+                    state["run_id"],
+                    "warning",
+                    {
+                        "message": (
+                            "Composed GA sheet / bundle generation failed — the "
+                            "individual diagrams and STEP parts stand alone: "
+                            f"{exc}"
+                        )
+                    },
+                )
 
         type_summary = module.type_summary(
             params=state["params"],

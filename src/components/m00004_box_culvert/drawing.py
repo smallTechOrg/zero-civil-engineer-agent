@@ -12,7 +12,12 @@ and 3D solid use — so calc-vs-drawing consistency is structural.
 
     from components.m00004_box_culvert.drawing import draw
     paths = draw(params, geometry, out_dir, run_id)
-    # -> {"ga_dxf": Path, "ga_svg": Path, "m00004_sheet": Path}
+    # -> {"ga_dxf", "ga_svg", "m00004_sheet", <ten <kind>_dxf/_svg pairs>}
+
+Phase 2 turns this module into an AGGREGATOR: it still authors the combined
+Phase-1 GA (`ga.dxf` = section + plan + title, byte-behaviour preserved) and the
+PDF sheet, AND additionally drives the ten per-diagram modules under `drawings/`
+(one `<kind>.dxf` + `<kind>.svg` each), saving + rendering them in one place.
 """
 
 from __future__ import annotations
@@ -26,8 +31,35 @@ from ezdxf.enums import TextEntityAlignment
 from ezdxf.layouts import Modelspace
 
 from components.m00004_box_culvert import pdfsheet
+from components.m00004_box_culvert.drawings import (
+    bar_shape_table,
+    cross_section,
+    curtain_wall,
+    elevation,
+    haunch_table,
+    notations,
+    notes,
+    plan,
+    return_wall,
+    typical_details,
+)
 from components.m00004_box_culvert.params import M00004Geometry, M00004Params
 from drawing.svg_render import render_svg
+
+# kind -> diagram module (each exposes ``build(geometry, params) -> Drawing``).
+# The kind is the artefact key stem AND the on-disk filename stem (kind.dxf/kind.svg).
+_DIAGRAM_MODULES = (
+    ("elevation", elevation),
+    ("cross_section", cross_section),
+    ("plan", plan),
+    ("curtain_wall", curtain_wall),
+    ("typical_details", typical_details),
+    ("return_wall", return_wall),
+    ("bar_shape_table", bar_shape_table),
+    ("notations", notations),
+    ("notes", notes),
+    ("haunch_table", haunch_table),
+)
 
 GA_DXF_NAME = "ga.dxf"
 GA_SVG_NAME = "ga.svg"
@@ -101,7 +133,30 @@ def draw(
     pdf_path = pdfsheet.generate_sheet(
         params, geometry, out_dir, run_id=run_id, drawing_date=drawing_date
     )
-    return {"ga_dxf": dxf_path, "ga_svg": svg_path, "m00004_sheet": pdf_path}
+    result: dict[str, Path] = {"ga_dxf": dxf_path, "ga_svg": svg_path, "m00004_sheet": pdf_path}
+    result.update(_draw_diagrams(params, geometry, out_dir))
+    return result
+
+
+def _draw_diagrams(
+    params: M00004Params, geometry: M00004Geometry, out_dir: Path
+) -> dict[str, Path]:
+    """Author, save and render the ten per-diagram DXF+SVG pairs.
+
+    Each diagram module builds its own ezdxf ``Drawing`` from geometry; saving to
+    ``<kind>.dxf`` and rendering ``<kind>.svg`` (shared SVG backend) happen here so
+    on-disk naming stays in one place. Returns ``{<kind>_dxf, <kind>_svg -> Path}``.
+    """
+    pairs: dict[str, Path] = {}
+    for kind, module in _DIAGRAM_MODULES:
+        doc = module.build(geometry, params)
+        dxf_path = out_dir / f"{kind}.dxf"
+        doc.saveas(dxf_path)
+        svg_path = out_dir / f"{kind}.svg"
+        svg_path.write_text(render_svg(doc), encoding="utf-8")
+        pairs[f"{kind}_dxf"] = dxf_path
+        pairs[f"{kind}_svg"] = svg_path
+    return pairs
 
 
 def _coerce_params(params) -> M00004Params:
@@ -272,7 +327,7 @@ def _draw_frame_and_title(
             0.7 * s,
         ),
         (
-            f"{params.concrete_grade.value} / {params.steel_grade.value}   t {g.thickness_mm:g}   "
+            f"{g.concrete_grade_resolved} / {params.steel_grade.value}   t {g.thickness_mm:g}   "
             f"HAUNCH {g.haunch_mm:g}   BARREL {g.barrel_length_mm:g}",
             0.7 * s,
         ),

@@ -21,12 +21,24 @@ from components.m00004_box_culvert import catalog
 from components.m00004_box_culvert.params import (
     APRON_LEN_MM,
     APRON_THICKNESS_MM,
+    BASE_COURSE_THICKNESS_MM,
+    BED_SLOPE_RUN,
     CURTAIN_DEPTH_MM,
     CURTAIN_THICKNESS_MM,
+    DROP_WALL_DEPTH_MM,
+    HFL_ABOVE_BED_FACTOR,
+    PCC_THICKNESS_MM,
+    RETURN_WALL_BASE_FACTOR,
+    STONE_PITCHING_THICKNESS_MM,
+    WEARING_COURSE_THICKNESS_MM,
+    WEEP_HOLE_DIA_MM,
+    WEEP_HOLE_SPACING_MM,
     WING_LEN_MM,
+    ExposureCondition,
     M00004Geometry,
     M00004Params,
 )
+from domain.culvert import ConcreteGrade
 
 # --------------------------------------------------------------------------- citations
 VERIFY_TAG = "PROVISIONAL - verify against RDSO/M-00004"
@@ -40,6 +52,31 @@ CITATION_PILOT_CONSTANT = (
     "Fixed appendage constant from the M-00004 pilot GA (return/wing wall, apron, "
     f"curtain wall) - {VERIFY_TAG}"
 )
+CITATION_MATERIAL = (
+    "RDSO/M-00004 material policy (exposure/size grade derivation) - "
+    f"{VERIFY_TAG}"
+)
+
+
+def resolve_concrete_grade(params: M00004Params) -> ConcreteGrade:
+    """Resolve the concrete grade rendered on every surface.
+
+    Derivation rule (normative, spec Phase-2 materials table):
+    * an explicit `params.concrete_grade` always wins;
+    * else `exposure == VERY_SEVERE` -> M40;
+    * else `max(clear_span_m, clear_height_m) < 1.0 m` -> M30 (documented as
+      UNREACHABLE in range: both fields are `ge=1.0`, so this branch never fires
+      for validated params — retained for completeness);
+    * else -> M35 (the typical RDSO/M-00004 grade).
+    """
+    params = coerce(M00004Params, params)
+    if params.concrete_grade is not None:
+        return params.concrete_grade
+    if params.exposure == ExposureCondition.VERY_SEVERE:
+        return ConcreteGrade.M40
+    if max(params.clear_span_m, params.clear_height_m) < 1.0:  # unreachable (ge=1.0)
+        return ConcreteGrade.M30
+    return ConcreteGrade.M35
 
 
 class _Trail:
@@ -91,6 +128,9 @@ def _derive_geometry(params: M00004Params, config: dict, flags: list[str]) -> M0
     barrel_length_mm = (
         formation_width_mm + 2.0 * (cushion_mm + outer_height_mm) * params.side_slope_h_per_v
     )
+    resolved_grade = resolve_concrete_grade(params)
+    hfl_above_bed_mm = HFL_ABOVE_BED_FACTOR * clear_height_mm
+    return_wall_base_width_mm = RETURN_WALL_BASE_FACTOR * outer_height_mm
     return M00004Geometry(
         clear_span_mm=clear_span_mm,
         clear_height_mm=clear_height_mm,
@@ -106,6 +146,22 @@ def _derive_geometry(params: M00004Params, config: dict, flags: list[str]) -> M0
         apron_thickness_mm=APRON_THICKNESS_MM,
         curtain_thickness_mm=CURTAIN_THICKNESS_MM,
         curtain_depth_mm=CURTAIN_DEPTH_MM,
+        # --- Phase-2 GA-sheet fields (single source for every new diagram/model) ---
+        concrete_grade_resolved=resolved_grade.value,
+        cushion_mm=cushion_mm,
+        formation_width_mm=formation_width_mm,
+        side_slope_h_per_v=params.side_slope_h_per_v,
+        wearing_course_thickness_mm=WEARING_COURSE_THICKNESS_MM,
+        pcc_thickness_mm=PCC_THICKNESS_MM,
+        stone_pitching_thickness_mm=STONE_PITCHING_THICKNESS_MM,
+        base_course_thickness_mm=BASE_COURSE_THICKNESS_MM,
+        bed_slope_run=BED_SLOPE_RUN,
+        weep_hole_dia_mm=WEEP_HOLE_DIA_MM,
+        weep_hole_spacing_mm=WEEP_HOLE_SPACING_MM,
+        drop_wall_depth_mm=DROP_WALL_DEPTH_MM,
+        hfl_above_bed_mm=hfl_above_bed_mm,
+        return_wall_base_width_mm=return_wall_base_width_mm,
+        return_wall_top_width_mm=thickness_mm,
         provisional_flags=list(flags),
     )
 
@@ -178,16 +234,96 @@ def size(params: M00004Params) -> M00004SizingResult:
         unit="mm",
         citation=CITATION_GEOMETRY,
     )
+    trail.record(
+        description="Resolved concrete grade (exposure/size derivation, PROVISIONAL)",
+        formula="explicit grade | very_severe -> M40 | <1 m -> M30 (unreachable) | else -> M35",
+        inputs={
+            "concrete_grade": params.concrete_grade.value if params.concrete_grade else "None",
+            "exposure": params.exposure.value,
+            "max_span_height_m": max(params.clear_span_m, params.clear_height_m),
+        },
+        value=float(geometry.thickness_mm),  # numeric slot; grade string is in inputs/assumption
+        unit=f"grade {geometry.concrete_grade_resolved}",
+        citation=CITATION_MATERIAL,
+    )
+    trail.record(
+        description="Derived HFL above bed (PROVISIONAL — hydraulics not verified)",
+        formula="hfl_above_bed = HFL_ABOVE_BED_FACTOR x clear_height",
+        inputs={"HFL_ABOVE_BED_FACTOR": HFL_ABOVE_BED_FACTOR, "clear_height_mm": geometry.clear_height_mm},
+        value=geometry.hfl_above_bed_mm,
+        unit="mm",
+        citation=CITATION_MATERIAL,
+    )
+    trail.record(
+        description="Derived return-wall base width (PROVISIONAL taper basis)",
+        formula="return_wall_base_width = RETURN_WALL_BASE_FACTOR x outer_height",
+        inputs={
+            "RETURN_WALL_BASE_FACTOR": RETURN_WALL_BASE_FACTOR,
+            "outer_height_mm": geometry.outer_height_mm,
+        },
+        value=geometry.return_wall_base_width_mm,
+        unit="mm",
+        citation=CITATION_MATERIAL,
+    )
+    trail.record(
+        description="Drop-wall depth below bed (fixed GA-detail constant, PROVISIONAL)",
+        formula="drop_wall_depth = DROP_WALL_DEPTH_MM",
+        inputs={"DROP_WALL_DEPTH_MM": DROP_WALL_DEPTH_MM},
+        value=geometry.drop_wall_depth_mm,
+        unit="mm",
+        citation=CITATION_MATERIAL,
+    )
 
-    assumptions = _assumptions(config, geometry, flags)
+    assumptions = _assumptions(params, config, geometry, flags)
     warnings = list(flags)
     return M00004SizingResult(
         geometry=geometry, assumptions=assumptions, trail=trail.steps, warnings=warnings
     )
 
 
-def _assumptions(config: dict, geometry: M00004Geometry, flags: list[str]) -> list[Assumption]:
+def _assumptions(
+    params: M00004Params, config: dict, geometry: M00004Geometry, flags: list[str]
+) -> list[Assumption]:
+    grade_note = (
+        f"Concrete grade explicitly set to {geometry.concrete_grade_resolved}."
+        if params.concrete_grade is not None
+        else (
+            f"Concrete grade derived as {geometry.concrete_grade_resolved} from exposure "
+            f"'{params.exposure.value}' / box size (very_severe -> M40, else M35; the <1 m -> M30 "
+            f"branch is unreachable for ge=1.0 inputs) - {VERIFY_TAG}."
+        )
+    )
     assumptions: list[Assumption] = [
+        Assumption(
+            field="concrete_grade_resolved",
+            value=geometry.concrete_grade_resolved,
+            source="preset" if params.concrete_grade is None else "user",
+            note=grade_note,
+        ),
+        Assumption(
+            field="hfl_above_bed_mm",
+            value=geometry.hfl_above_bed_mm,
+            source="engine_default",
+            note=(
+                f"HFL above bed = {HFL_ABOVE_BED_FACTOR:g} x clear height (PROVISIONAL — "
+                f"hydraulics not verified) - {VERIFY_TAG}."
+            ),
+        ),
+        Assumption(
+            field="return_wall_base_width_mm",
+            value=geometry.return_wall_base_width_mm,
+            source="engine_default",
+            note=(
+                f"Return-wall base width = {RETURN_WALL_BASE_FACTOR:g} x outer height, tapering to "
+                f"top width = thickness (PROVISIONAL taper basis) - {VERIFY_TAG}."
+            ),
+        ),
+        Assumption(
+            field="drop_wall_depth_mm",
+            value=geometry.drop_wall_depth_mm,
+            source="engine_default",
+            note=f"Drop-wall depth below bed fixed GA-detail constant - {VERIFY_TAG}.",
+        ),
         Assumption(
             field="config_id",
             value=config["id"],
