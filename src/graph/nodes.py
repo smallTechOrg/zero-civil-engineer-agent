@@ -47,6 +47,9 @@ _ARTIFACT_MIME = {
     "sfd_svg": "image/svg+xml",
     "model_glb": "model/gltf-binary",
     "model_step": "application/step",
+    # Standard-driven components (e.g. M-00004) return one extra artefact kind
+    # beyond the fixed set — the reportlab standard drawing sheet.
+    "m00004_sheet": "application/pdf",
 }
 _ARTIFACT_ORDER = ("ga_dxf", "ga_svg")
 
@@ -336,6 +339,50 @@ def understand(state: AgentState) -> dict:
 
 
 @_node
+def seed_params(state: AgentState) -> dict:
+    """Params-direct entry — seed the run from a typed parameter form, NO LLM.
+
+    Standard-driven components (`params_direct`) skip the `understand`/`extract`
+    LLM intake entirely: the validated params are already on the state (the API
+    validated them synchronously and the runner seeded them). This deterministic
+    node marks the Understand + Extract UI steps `done` with a "standard
+    component / parameter form" detail, narrates a deterministic plan, surfaces
+    any module `unusual_value_warnings`, and routes on to `analyse`. It makes
+    ZERO LLM calls — no `understand`, no `extract`.
+    """
+    tracker = StepTracker(state)
+    detail = "Entered via the parameter form — standard component"
+    tracker.mark("Understand", "done", detail=detail)
+    tracker.mark("Extract", "active", detail=detail)
+    try:
+        module = _module(state)
+        params_model = module.param_model(**(state.get("params") or {}))
+        plan = (
+            f"Reproducing the {module.display_name} from the entered parameters — "
+            "selecting the nearest standard configuration, then building the GA "
+            "drawing, the 3D solid and the standard drawing sheet deterministically. "
+            "Every catalogue-derived value is PROVISIONAL."
+        )
+        _narrate(state, plan)
+        warnings = module.unusual_value_warnings(params_model)
+        for warning in warnings:
+            publish(state["run_id"], "warning", {"message": warning})
+        tracker.mark("Extract", "done", detail=detail)
+        return {
+            "in_scope": True,
+            "plan_text": plan,
+            "warnings": list(state.get("warnings") or []) + warnings,
+            "steps": tracker.steps,
+        }
+    except Exception as exc:
+        tracker.mark("Extract", "failed", detail=str(exc))
+        return {
+            "steps": tracker.steps,
+            "error": f"Seeding the parameter-form run failed: {exc}",
+        }
+
+
+@_node
 def extract(state: AgentState) -> dict:
     tracker = StepTracker(state)
     tracker.mark("Extract", "active", detail="Extracting design parameters")
@@ -591,6 +638,12 @@ def draw(state: AgentState) -> dict:
         artefacts = list(state.get("artefacts") or [])
         for kind in _ARTIFACT_ORDER:
             _emit_artifact(state, artefacts, kind, paths[kind], "draw")
+        # Emit any additional artefact kinds the module returns beyond the fixed
+        # GA pair (e.g. M-00004's `m00004_sheet` PDF). Existing components return
+        # only the fixed keys, so their behaviour is byte-identical.
+        for kind, path in paths.items():
+            if kind not in _ARTIFACT_ORDER:
+                _emit_artifact(state, artefacts, kind, path, "draw")
         tracker.mark("Draw", "done", detail="GA drawing ready (DXF + SVG)")
         return {"artefacts": artefacts, "steps": tracker.steps}
     except Exception as exc:
@@ -662,25 +715,48 @@ def review(state: AgentState) -> dict:
             _emit_artifact(state, artefacts, kind, out_dir / filename, "review")
 
         _narrate(state, "Drafting the proof-check memo…")
-        llm = LLMClient().generate(
-            proof.memo_facts, system=module.memo_prompt(), temperature=0.2
-        )
-        token_usage = _record_llm_call(state, "review", llm)
-        narration: str | None = (llm.text or "").strip()
-        problems = proof.validate_narration(narration)
-        if problems:
-            # Rejection is never fatal — the memo stands fully deterministic.
+        # The memo narration is the one OPTIONAL, grounded LLM call. Neither a
+        # transport/quota failure (e.g. Gemini 429 RESOURCE_EXHAUSTED) nor a
+        # grounding rejection is fatal: on either, the narration is discarded and
+        # the memo composes fully deterministically (spec: "memo narration failing
+        # grounding is discarded → the memo composes deterministically (never
+        # fatal)"). Only genuine proof-check computation failures fail the run.
+        token_usage = list(state.get("token_usage") or [])
+        narration: str | None = None
+        try:
+            llm = LLMClient().generate(
+                proof.memo_facts, system=module.memo_prompt(), temperature=0.2
+            )
+        except Exception as exc:
+            # Transport/quota failure on the OPTIONAL narration call — non-fatal.
             publish(
                 state["run_id"],
                 "warning",
                 {
-                    "message": "The LLM memo narration failed the deterministic "
-                    "grounding validation and was discarded — the memo is fully "
-                    "deterministic."
+                    "message": "The LLM memo narration was unavailable "
+                    "(transport/quota) — composing the fully deterministic memo."
                 },
             )
-            _log(state, "review").warning("memo_narration_rejected", problems=problems)
-            narration = None
+            _log(state, "review").warning("memo_narration_unavailable", error=str(exc))
+        else:
+            token_usage = _record_llm_call(state, "review", llm)
+            narration = (llm.text or "").strip()
+            problems = proof.validate_narration(narration)
+            if problems:
+                # Rejection is never fatal — the memo stands fully deterministic.
+                publish(
+                    state["run_id"],
+                    "warning",
+                    {
+                        "message": "The LLM memo narration failed the deterministic "
+                        "grounding validation and was discarded — the memo is fully "
+                        "deterministic."
+                    },
+                )
+                _log(state, "review").warning(
+                    "memo_narration_rejected", problems=problems
+                )
+                narration = None
         memo_md = proof.render_memo(narration)
         memo_path = out_dir / proof.memo_filename
         memo_path.write_text(memo_md, encoding="utf-8")
@@ -751,7 +827,10 @@ def finalize(state: AgentState) -> dict:
     # runs never get chips; clarify never reaches finalize).
     suggestions: list[str] = []
     token_usage = list(state.get("token_usage") or [])
-    if status == "completed":
+    # Params-direct (form-only) runs show no NL prompt box, so refinement chips
+    # would dangle — skip the suggestions LLM call entirely (capability doc), the
+    # M-00004 path stays at exactly one optional grounded LLM call (the memo).
+    if status == "completed" and not state.get("params_direct"):
         suggestions, token_usage = _refinement_suggestions(state)
     prompt_tokens, completion_tokens = run_totals(token_usage)
     cost_usd = compute_cost_usd(prompt_tokens, completion_tokens)

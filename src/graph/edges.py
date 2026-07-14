@@ -5,6 +5,17 @@ from collections.abc import Callable
 from graph.state import AgentState
 
 
+def route_entry(state: AgentState) -> str:
+    """Conditional entry point: params-direct forms bypass the LLM intake.
+
+    A typed parameter-form submission (`params_direct`) is seeded straight from
+    the validated params — it routes to the deterministic `seed_params` node and
+    never runs `understand`/`extract`. Every natural-language run routes to
+    `understand`, byte-identical to the pre-params-direct graph.
+    """
+    return "seed_params" if state.get("params_direct") else "understand"
+
+
 def route_understand(state: AgentState) -> str:
     if state.get("error"):
         return "handle_error"

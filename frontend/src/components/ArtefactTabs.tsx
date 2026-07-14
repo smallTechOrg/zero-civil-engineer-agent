@@ -31,6 +31,7 @@ interface ArtefactTabsProps {
   typeSummary: TypeSummary | null
   svgMarkup: string | null
   dxfUrl: string | null
+  m00004SheetUrl: string | null
   calcSheet: CalcSheetData | null
   calcComposing: boolean
   compliance: ComplianceData | null
@@ -57,6 +58,7 @@ export default function ArtefactTabs({
   typeSummary,
   svgMarkup,
   dxfUrl,
+  m00004SheetUrl,
   calcSheet,
   calcComposing,
   compliance,
@@ -120,6 +122,7 @@ export default function ArtefactTabs({
           <DrawingViewer
             svgMarkup={svgMarkup}
             dxfUrl={dxfUrl}
+            m00004SheetUrl={m00004SheetUrl}
             isRunning={isRunning}
             drawActive={drawActive}
             runFailed={runFailed}

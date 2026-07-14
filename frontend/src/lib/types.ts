@@ -173,10 +173,59 @@ export interface ComponentCard {
   status: ComponentStatus
   codes: string[]
   example_prompt?: string | null
+  /**
+   * Standard-driven components (e.g. M-00004) are form-only: intake bypasses the
+   * LLM. The API may expose this flag; when absent the frontend gates on the
+   * known `m00004_box_culvert` type id (see `isParamsDirectComponent`).
+   */
+  params_direct_only?: boolean | null
 }
 
 export interface ComponentCatalogue {
   components: ComponentCard[]
+}
+
+// ---------------------------------------------------------------------------
+// M-00004 Standard Box Culvert (RDSO) — params-direct component. Picking its
+// card reveals `M00004ParamForm` in place of the NL prompt box; the form submits
+// a typed `params` object (spec/capabilities/m00004-box-culvert.md § Inputs).
+// ---------------------------------------------------------------------------
+
+export const M00004_TYPE_ID = 'm00004_box_culvert'
+
+export type ConcreteGrade = 'M25' | 'M30' | 'M35'
+export type SteelGrade = 'Fe415' | 'Fe500'
+
+/** `M00004Params` — the exact typed fields, defaults and hard ranges. */
+export interface M00004Params {
+  clear_span_m: number
+  clear_height_m: number
+  cushion_m: number
+  surcharge_kn_m2: number
+  formation_width_m: number
+  side_slope_h_per_v: number
+  concrete_grade: ConcreteGrade
+  steel_grade: SteelGrade
+}
+
+/** type_summary for M-00004 — `kind: "m00004_standard"`. */
+export interface M00004TypeSummary {
+  kind: 'm00004_standard'
+  config_id: string
+  thickness_mm: number
+  haunch_mm: number
+  barrel_length_mm: number
+  provisional_flags: string[]
+  verdict?: string
+}
+
+/**
+ * A params-direct (standard-driven) component is form-only. Prefer explicit
+ * API metadata when exposed, else gate on the known M-00004 type id.
+ */
+export function isParamsDirectComponent(card: ComponentCard | null | undefined): boolean {
+  if (!card) return false
+  return card.params_direct_only === true || card.type_id === M00004_TYPE_ID
 }
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,8 @@ import { TransformComponent, TransformWrapper, useControls } from 'react-zoom-pa
 interface DrawingViewerProps {
   svgMarkup: string | null
   dxfUrl: string | null
+  /** M-00004 standard PDF sheet URL, when the run emitted the `m00004_sheet` kind. */
+  m00004SheetUrl?: string | null
   isRunning: boolean
   drawActive: boolean
   runFailed: boolean
@@ -57,7 +59,44 @@ function DownloadDxfButton({ dxfUrl }: { dxfUrl: string | null }) {
   )
 }
 
-export default function DrawingViewer({ svgMarkup, dxfUrl, isRunning, drawActive, runFailed, hasRun }: DrawingViewerProps) {
+// Opens the M-00004 standard PDF sheet inline in a new tab (the server serves it
+// with `Content-Disposition: inline`), and offers a direct download. Absent for
+// components that don't emit the PDF — never a broken/empty control (spec/ui.md).
+function M00004SheetButtons({ url }: { url: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <a
+        data-testid="open-m00004-pdf"
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        title="Opens the RDSO/M-00004 standard sheet (dimensioned section, a1..h reinforcement, schedule, notes) — every catalogue value marked PROVISIONAL"
+        className="rounded-md bg-emerald-700 px-4 py-1.5 text-base font-semibold text-white shadow-sm hover:bg-emerald-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700"
+      >
+        Open M-00004 sheet (PDF)
+      </a>
+      <a
+        data-testid="download-m00004-pdf"
+        href={url}
+        download="m00004_sheet.pdf"
+        title="Download the M-00004 PDF sheet"
+        className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-base font-semibold text-slate-700 shadow-sm hover:bg-slate-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+      >
+        Download
+      </a>
+    </span>
+  )
+}
+
+export default function DrawingViewer({
+  svgMarkup,
+  dxfUrl,
+  m00004SheetUrl,
+  isRunning,
+  drawActive,
+  runFailed,
+  hasRun,
+}: DrawingViewerProps) {
   if (!svgMarkup) {
     if (isRunning) {
       return (
@@ -96,7 +135,10 @@ export default function DrawingViewer({ svgMarkup, dxfUrl, isRunning, drawActive
         <div className="flex flex-wrap items-center justify-between gap-3">
           <ZoomControls />
           <p className="text-sm text-slate-500">Wheel to zoom · drag to pan · double-click to reset</p>
-          <DownloadDxfButton dxfUrl={dxfUrl} />
+          <div className="flex flex-wrap items-center gap-2">
+            {m00004SheetUrl && <M00004SheetButtons url={m00004SheetUrl} />}
+            <DownloadDxfButton dxfUrl={dxfUrl} />
+          </div>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-300 bg-white shadow-inner">
           <TransformComponent wrapperClass="!h-full !w-full" contentClass="!h-full !w-full">

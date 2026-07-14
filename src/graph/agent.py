@@ -2,7 +2,7 @@
 
 from langgraph.graph import END, StateGraph
 
-from graph.edges import route_extract, route_on_error, route_understand
+from graph.edges import route_entry, route_extract, route_on_error, route_understand
 from graph.nodes import (
     analyse,
     check,
@@ -13,6 +13,7 @@ from graph.nodes import (
     handle_error,
     model3d,
     review,
+    seed_params,
     understand,
 )
 from graph.state import AgentState
@@ -23,6 +24,7 @@ def _build_graph():
 
     for name, fn in [
         ("understand", understand),
+        ("seed_params", seed_params),
         ("extract", extract),
         ("clarify", clarify),
         ("analyse", analyse),
@@ -35,7 +37,14 @@ def _build_graph():
     ]:
         graph.add_node(name, fn)
 
-    graph.set_entry_point("understand")
+    # Conditional entry: START → route_entry → {understand (NL), seed_params
+    # (params-direct)}. Every natural-language run enters `understand` exactly as
+    # before; a typed parameter-form run enters the deterministic `seed_params`
+    # node and joins the shared pipeline at `analyse`.
+    graph.set_conditional_entry_point(
+        route_entry, {"understand": "understand", "seed_params": "seed_params"}
+    )
+    graph.add_edge("seed_params", "analyse")
 
     graph.add_conditional_edges(
         "understand",

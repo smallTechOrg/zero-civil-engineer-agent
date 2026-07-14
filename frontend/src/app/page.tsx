@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ArtefactTabs, { type TabId } from '@/components/ArtefactTabs'
 import ComponentPicker from '@/components/ComponentPicker'
 import DetectedTypeChip from '@/components/DetectedTypeChip'
+import M00004ParamForm from '@/components/M00004ParamForm'
 import PromptPanel, { CANONICAL_PROMPT, type PromptMode } from '@/components/PromptPanel'
 import StatusLine from '@/components/StatusLine'
 import StepTracker from '@/components/StepTracker'
@@ -24,10 +25,12 @@ import {
 import { subscribeToRun, type RunSubscription } from '@/lib/sse'
 import {
   STEP_NAMES,
+  isParamsDirectComponent,
   type ArtefactRecord,
   type CalcSheetData,
   type ComplianceData,
   type ComponentCard,
+  type M00004Params,
   type RunListItem,
   type RunSnapshot,
   type RunStatus,
@@ -51,6 +54,7 @@ interface RunView {
   clarificationQuestion: string | null
   svgMarkup: string | null
   dxfUrl: string | null
+  m00004SheetUrl: string | null
   calcSheet: CalcSheetData | null
   compliance: ComplianceData | null
   memoMarkdown: string | null
@@ -121,6 +125,7 @@ function viewFromSnapshot(snap: RunSnapshot): RunView {
     clarificationQuestion: snap.clarification_question,
     svgMarkup: null,
     dxfUrl: snap.artefacts?.find(a => a.kind === 'ga_dxf')?.url ?? null,
+    m00004SheetUrl: snap.artefacts?.find(a => a.kind === 'm00004_sheet')?.url ?? null,
     calcSheet: null,
     compliance: complianceFromSnapshot(snap),
     memoMarkdown: null,
@@ -197,6 +202,11 @@ export default function DesignStudio() {
       case 'ga_dxf':
         patch({ dxfUrl: url })
         break
+      case 'm00004_sheet':
+        // The PDF is served inline by the backend — only the URL is stored;
+        // the Drawing tab's "Open M-00004 sheet (PDF)" button links to it.
+        patch({ m00004SheetUrl: url })
+        break
       case 'calc_sheet':
         fetchArtefactJson<CalcSheetData>(url)
           .then(sheet => patch({ calcSheet: sheet }))
@@ -264,6 +274,7 @@ export default function DesignStudio() {
             typeSummary: final.typeSummary ?? prev.typeSummary ?? null,
             // Keep artefacts already streamed in — loadRunArtefacts refreshes them.
             svgMarkup: prev.svgMarkup,
+            m00004SheetUrl: prev.m00004SheetUrl ?? final.m00004SheetUrl,
             calcSheet: prev.calcSheet ?? final.calcSheet,
             compliance: prev.compliance ?? final.compliance,
             memoMarkdown: prev.memoMarkdown,
@@ -297,6 +308,7 @@ export default function DesignStudio() {
           componentType: next.componentType ?? prev?.componentType ?? null,
           typeSummary: next.typeSummary ?? prev?.typeSummary ?? null,
           svgMarkup: prev?.svgMarkup ?? null,
+          m00004SheetUrl: prev?.m00004SheetUrl ?? next.m00004SheetUrl,
           calcSheet: prev?.calcSheet ?? next.calcSheet,
           compliance: prev?.compliance ?? next.compliance,
           memoMarkdown: prev?.memoMarkdown ?? null,
@@ -424,6 +436,7 @@ export default function DesignStudio() {
         clarificationQuestion: null,
         svgMarkup: null,
         dxfUrl: null,
+        m00004SheetUrl: null,
         calcSheet: null,
         compliance: null,
         memoMarkdown: null,
@@ -512,6 +525,63 @@ export default function DesignStudio() {
       }
     },
     [beginLiveRun, persistSession, selectedComponent, sessionId, submitting],
+  )
+
+  // Params-direct submit for a standard-driven component (M-00004): sends the
+  // typed `params` object with `component_type`; the graph bypasses the LLM
+  // intake nodes (spec/capabilities/m00004-box-culvert.md). A short synthetic
+  // prompt is stored only for the audit-trail / library row.
+  const submitParams = useCallback(
+    async (componentType: string, params: M00004Params) => {
+      if (submitting || runStatusRef.current === 'running') return
+      setSubmitting(true)
+      setFormError(null)
+      const prompt = `M-00004 standard box culvert ${params.clear_span_m}×${params.clear_height_m} m, fill ${params.cushion_m} m, surcharge ${params.surcharge_kn_m2} kN/m²`
+      try {
+        let sid = sessionId
+        if (!sid) {
+          sid = (await createSession()).session_id
+          persistSession(sid)
+        }
+        const paramsPayload = params as unknown as Record<string, unknown>
+        let response
+        try {
+          response = await submitDesign(sid, prompt, componentType, paramsPayload)
+        } catch (error) {
+          if (error instanceof ApiError && error.status === 404) {
+            // Stored session no longer exists (fresh database) — start a new one.
+            sid = (await createSession()).session_id
+            persistSession(sid)
+            setTurns([])
+            setTurnDetails({})
+            setSessionCostUsd(0)
+            response = await submitDesign(sid, prompt, componentType, paramsPayload)
+          } else {
+            throw error
+          }
+        }
+        beginLiveRun(response.run_id, sid, prompt, componentType)
+      } catch (error) {
+        if (error instanceof ApiError) {
+          if (error.code === 'RUN_ACTIVE') {
+            setFormError('A run is already in progress in this session — wait for it to finish.')
+          } else if (error.code === 'PARAMS_INVALID') {
+            setFormError(error.message || 'One or more parameters are out of range — adjust the highlighted fields.')
+          } else if (error.code === 'PARAMS_REQUIRED') {
+            setFormError('This standard component needs its parameters — fill the form and submit again.')
+          } else if (error.code === 'UNKNOWN_COMPONENT') {
+            setFormError('That component is not available yet — pick an available one.')
+          } else {
+            setFormError(error.message)
+          }
+        } else {
+          setFormError('Something went wrong submitting the parameters — try again.')
+        }
+      } finally {
+        setSubmitting(false)
+      }
+    },
+    [beginLiveRun, persistSession, sessionId, submitting],
   )
 
   const loadPastRun = useCallback(
@@ -623,6 +693,9 @@ export default function DesignStudio() {
     [components],
   )
   const selectedCard = selectedComponent ? componentsById[selectedComponent] ?? null : null
+  // A standard-driven (params-direct) component is form-only: its typed
+  // parameter form replaces the NL prompt box (spec/ui.md → "Parameter form").
+  const showParamForm = isParamsDirectComponent(selectedCard)
 
   // Auto-detect chip: only when the user did NOT pick explicitly, the run
   // classified a component, and Understand has started.
@@ -649,7 +722,9 @@ export default function DesignStudio() {
       : 'design'
 
   const promptDisabled = submitting || isRunning
-  const showHero = !booting && turns.length === 0 && !run && !tabsForced
+  // The hero's one-click starter runs the canonical culvert prompt — hide it when
+  // a params-direct component is picked so it never contradicts the shown form.
+  const showHero = !booting && turns.length === 0 && !run && !tabsForced && !showParamForm
 
   const handleTryAgain = () => {
     if (run) setPromptValue(run.prompt)
@@ -696,26 +771,43 @@ export default function DesignStudio() {
             />
           </div>
           <div className="space-y-3 border-t border-slate-200 bg-white p-4">
-            <SuggestionChips suggestions={suggestions} onPick={handleSuggestionPick} disabled={promptDisabled} />
-            <PromptPanel
-              value={promptValue}
-              onChange={value => {
-                setPromptValue(value)
-                if (formError) setFormError(null)
-              }}
-              onSubmit={() => void submitPrompt(promptValue)}
-              mode={promptMode}
-              disabled={promptDisabled}
-              disabledReason={isRunning ? 'A design run is in progress — the prompt re-opens when it finishes.' : null}
-              formError={formError}
-              clarificationQuestion={pendingQuestion}
-              placeholder={selectedCard?.example_prompt || CANONICAL_PROMPT}
-              hint={
-                selectedCard
-                  ? `Designing a ${selectedCard.display_name}. ${selectedCard.summary}`
-                  : 'The agent auto-detects the component — or pick one above.'
-              }
-            />
+            {showParamForm && selectedCard ? (
+              <M00004ParamForm
+                componentName={selectedCard.display_name}
+                onSubmit={params => void submitParams(selectedCard.type_id, params)}
+                disabled={promptDisabled}
+                disabledReason={
+                  isRunning ? 'A design run is in progress — the form re-opens when it finishes.' : null
+                }
+                submitting={submitting}
+                serverError={formError}
+              />
+            ) : (
+              <>
+                <SuggestionChips suggestions={suggestions} onPick={handleSuggestionPick} disabled={promptDisabled} />
+                <PromptPanel
+                  value={promptValue}
+                  onChange={value => {
+                    setPromptValue(value)
+                    if (formError) setFormError(null)
+                  }}
+                  onSubmit={() => void submitPrompt(promptValue)}
+                  mode={promptMode}
+                  disabled={promptDisabled}
+                  disabledReason={
+                    isRunning ? 'A design run is in progress — the prompt re-opens when it finishes.' : null
+                  }
+                  formError={formError}
+                  clarificationQuestion={pendingQuestion}
+                  placeholder={selectedCard?.example_prompt || CANONICAL_PROMPT}
+                  hint={
+                    selectedCard
+                      ? `Designing a ${selectedCard.display_name}. ${selectedCard.summary}`
+                      : 'The agent auto-detects the component — or pick one above.'
+                  }
+                />
+              </>
+            )}
           </div>
         </aside>
 
@@ -820,6 +912,7 @@ export default function DesignStudio() {
                   typeSummary={run?.typeSummary ?? null}
                   svgMarkup={run?.svgMarkup ?? null}
                   dxfUrl={run?.dxfUrl ?? null}
+                  m00004SheetUrl={run?.m00004SheetUrl ?? null}
                   calcSheet={run?.calcSheet ?? null}
                   calcComposing={run?.steps.Analyse.status === 'active' || run?.steps.Check.status === 'active'}
                   compliance={run?.compliance ?? null}

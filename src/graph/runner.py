@@ -24,6 +24,7 @@ def start_design_run(
     preset_id: str | None = None,
     *,
     requested_component: str | None = None,
+    params: dict | None = None,
 ) -> str:
     # Idempotent: the app configures structlog at startup, but the runner can be
     # entered directly (tests, scripts) — background-thread logs stay JSON either way.
@@ -32,6 +33,10 @@ def start_design_run(
     # An explicit picker choice overrides auto-detect; otherwise `understand`
     # classifies and sets component_type. Default to box_culvert until then.
     component_type = requested_component or "box_culvert"
+    # Params-direct: a typed parameter form (already API-validated) seeds the run
+    # directly. The conditional entry routes to `seed_params` (no LLM intake); the
+    # component_type is fixed by the picker and the request is trivially in scope.
+    params_direct = bool(params)
     state: AgentState = {
         "run_id": run_id,
         "session_id": session_id,
@@ -41,10 +46,11 @@ def start_design_run(
         "messages": persistence.load_messages(session_id, exclude_run_id=run_id),
         "prior_params": persistence.load_prior_params(session_id, exclude_run_id=run_id),
         "preset_values": persistence.load_preset_values(preset_id),
+        "params_direct": params_direct,
         "in_scope": True,
         "scope_message": None,
         "plan_text": "",
-        "params": None,
+        "params": params if params_direct else None,
         "missing_critical": [],
         "warnings": [],
         "clarification_question": None,

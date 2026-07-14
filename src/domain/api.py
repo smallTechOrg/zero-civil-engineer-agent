@@ -23,6 +23,12 @@ class DesignSubmitRequest(BaseModel):
     # Optional picker choice (registry type_id) — overrides auto-detect. Omit to
     # auto-detect the component from the prompt.
     component_type: str | None = None
+    # Optional typed parameter object for a STANDARD-DRIVEN (params-direct)
+    # component. When present the submit is a params-direct submission: it
+    # requires `component_type`, the API validates `params` synchronously against
+    # that module's `param_model` (422 PARAMS_INVALID on failure), and the run
+    # bypasses the LLM understand/extract intake. NL components ignore it.
+    params: dict | None = None
 
 
 # --- Responses ----------------------------------------------------------------
