@@ -62,7 +62,7 @@ One generated file belonging to a run.
 |-------|------|----------|-------------|
 | id | TEXT (uuid) | yes | Primary key |
 | run_id | TEXT FK → design_runs.id | yes | |
-| kind | TEXT | yes | `ga_dxf` \| `ga_svg` \| `calc_sheet` \| `compliance` \| `proof_memo` \| `bmd_svg` \| `sfd_svg` \| `model_glb` \| `model_step` |
+| kind | TEXT | yes | `ga_dxf` \| `ga_svg` \| `calc_sheet` \| `compliance` \| `proof_memo` \| `bmd_svg` \| `sfd_svg` \| `model_glb` \| `model_step` \| `m00004_sheet` (M-00004 PDF sheet). Free-text column — a component may add a kind with no migration |
 | filename | TEXT | yes | Fixed name from the layout below |
 | mime | TEXT | yes | e.g. `image/vnd.dxf`, `image/svg+xml`, `model/gltf-binary`, `application/json`, `text/markdown` |
 | size_bytes | INTEGER | yes | |
@@ -90,7 +90,7 @@ Seeded by migration 0002 with one default preset (values = the engine defaults i
 
 ## Component parameter models
 
-Each component declares its own typed parameter model (`ComponentModule.param_model`). The culvert's is `CulvertParams` (below); the retaining wall's is `RetainingWallParams` (field list normative in [capabilities/retaining-wall.md](capabilities/retaining-wall.md)). Both follow the same discipline: **critical** fields must come from the user (missing → one clarifying question); all others default with an explicit `Assumption` record. `Assumption`, `CalcStep`, and the derived-geometry pattern are shared shapes reused by every component. Presets carry component-scoped non-critical defaults; a run snapshots the applied preset values into `params_json`/`assumptions_json`.
+Each component declares its own typed parameter model (`ComponentModule.param_model`). The culvert's is `CulvertParams` (below); the retaining wall's is `RetainingWallParams` (field list normative in [capabilities/retaining-wall.md](capabilities/retaining-wall.md)); the standard-driven M-00004 box culvert's is `M00004Params` (field list normative in [capabilities/m00004-box-culvert.md](capabilities/m00004-box-culvert.md)), submitted via the params-direct form rather than extracted from NL. NL components follow the same discipline: **critical** fields must come from the user (missing → one clarifying question); all others default with an explicit `Assumption` record. `Assumption`, `CalcStep`, and the derived-geometry pattern are shared shapes reused by every component. Presets carry component-scoped non-critical defaults; a run snapshots the applied preset values into `params_json`/`assumptions_json`.
 
 ## CulvertParams — the culvert parameter model
 
@@ -134,7 +134,8 @@ data/
         ├── proof_memo.md             # severity-graded memo (Phase 2)
         ├── bmd.svg / sfd.svg         # FE cross-check diagrams (Phase 2)
         ├── model.glb                 # 3D view (Phase 3)
-        └── model.step                # CAD-openable download (Phase 3)
+        ├── model.step                # CAD-openable download (Phase 3)
+        └── m00004_sheet.pdf          # M-00004 standard PDF sheet — reinforcement + schedule (M-00004 component only)
 ```
 
 Fixed filenames (whitelisted for serving — no user-controlled paths). `data/` is gitignored. `AGENT_ARTIFACTS_DIR` (default `data/artifacts`) configures the root.
