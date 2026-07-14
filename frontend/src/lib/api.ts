@@ -69,15 +69,24 @@ export function submitDesign(
   prompt: string,
   componentType?: string | null,
   params?: Record<string, unknown> | null,
+  parentRunId?: string | null,
 ): Promise<SubmitDesignResponse> {
   // component_type is sent only when the user explicitly picked an available
   // component; omitting it lets `understand` auto-detect (spec/api.md).
   // `params` is a params-direct (standard-driven) submit — it requires
   // component_type and is validated server-side against the module's
   // param_model (422 PARAMS_INVALID / PARAMS_REQUIRED).
-  const body: { prompt: string; component_type?: string; params?: Record<string, unknown> } = { prompt }
+  // parent_run_id is sent only on a REFINE — it joins the open design's record
+  // (same card, new version) instead of starting a fresh record.
+  const body: {
+    prompt: string
+    component_type?: string
+    params?: Record<string, unknown>
+    parent_run_id?: string
+  } = { prompt }
   if (componentType) body.component_type = componentType
   if (params) body.params = params
+  if (parentRunId) body.parent_run_id = parentRunId
   return apiFetch<SubmitDesignResponse>(`/api/sessions/${sessionId}/designs`, {
     method: 'POST',
     body: JSON.stringify(body),

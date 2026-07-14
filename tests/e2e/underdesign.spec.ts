@@ -39,20 +39,21 @@ test.describe('under-designed slab caught by the proof-check (real backend + Gem
     await expect(page.getByTestId('prompt-submit')).toHaveText('Refine', { timeout: 180_000 })
     await expect(page.getByTestId('prompt-submit')).toBeEnabled()
 
-    // FAIL rows are unmistakable in the calc sheet.
-    await page.getByTestId('tab-calc-sheet').click()
+    // FAIL rows are unmistakable in the calc sheet (Design → Calc Sheet panel).
+    await page.getByTestId('stage-tab-design').click()
+    await page.getByTestId('design-panel-calc').click()
     await expect(page.getByTestId('calc-assumptions')).toBeVisible({ timeout: 30_000 })
     const failRows = page.locator('[data-testid="calc-row"][data-status="FAIL"]')
     expect(await failRows.count(), 'the under-designed run must show FAIL calc lines').toBeGreaterThan(0)
     await expect(failRows.first()).toContainText('FAIL')
 
-    // Red verdict banner; the memo/matrix names the failing member.
-    await page.getByTestId('tab-proof-check').click()
+    // Red verdict banner; the memo/matrix names the failing member (Review stage).
+    await page.getByTestId('stage-tab-review').click()
     const banner = page.getByTestId('verdict-banner')
     await expect(banner).toBeVisible({ timeout: 30_000 })
     await expect(banner).toHaveAttribute('data-verdict', 'return_for_revision')
     await expect(banner).toContainText('Return for revision')
-    await expect(page.locator('#panel-proof-check')).toContainText(/top slab/i, { timeout: 30_000 })
+    await expect(page.getByTestId('proof-check-content')).toContainText(/top slab/i, { timeout: 30_000 })
 
     // Major non-conformities render distinctly from minor/observation rows.
     expect(
@@ -68,7 +69,7 @@ test.describe('under-designed slab caught by the proof-check (real backend + Gem
     await expect(page.getByTestId('prompt-submit')).toBeEnabled({ timeout: 180_000 })
     await expect(page.getByTestId('prompt-submit')).toHaveText('Refine')
 
-    await page.getByTestId('tab-proof-check').click()
+    await page.getByTestId('stage-tab-review').click()
     const revisedBanner = page.getByTestId('verdict-banner')
     await expect(revisedBanner).toBeVisible({ timeout: 30_000 })
     await expect(revisedBanner).toHaveAttribute('data-verdict', 'recommended_for_approval')

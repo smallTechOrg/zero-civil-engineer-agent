@@ -7,8 +7,8 @@ def test_submit_design_happy_path(api_client, make_session_row, monkeypatch):
     session_id = make_session_row()
     calls = {}
 
-    def fake_start(sess_id, prompt, preset_id=None, requested_component=None):
-        calls["args"] = (sess_id, prompt, preset_id, requested_component)
+    def fake_start(sess_id, prompt, preset_id=None, requested_component=None, parent_run_id=None):
+        calls["args"] = (sess_id, prompt, preset_id, requested_component, parent_run_id)
         return "run-abc-123"
 
     monkeypatch.setattr("api.designs._start_design_run", fake_start)
@@ -25,13 +25,33 @@ def test_submit_design_happy_path(api_client, make_session_row, monkeypatch):
         "events_url": "/api/designs/run-abc-123/events",
         "snapshot_url": "/api/designs/run-abc-123",
     }
-    # component_type omitted → auto-detect (requested_component is None)
+    # component_type omitted → auto-detect (requested_component is None);
+    # no parent_run_id → this legacy path also omits it (parent_run_id is None)
     assert calls["args"] == (
         session_id,
         "single box culvert, 4 m clear span, 3 m height, 2.5 m cushion",
         None,
         None,
+        None,
     )
+
+
+def test_submit_design_passes_parent_run_id_on_refine(api_client, make_session_row, monkeypatch):
+    session_id = make_session_row()
+    calls = {}
+
+    def fake_start(sess_id, prompt, preset_id=None, requested_component=None, parent_run_id=None):
+        calls["parent"] = parent_run_id
+        return "run-refine-1"
+
+    monkeypatch.setattr("api.designs._start_design_run", fake_start)
+
+    r = api_client.post(
+        f"/api/sessions/{session_id}/designs",
+        json={"prompt": "increase the cushion to 3 m", "parent_run_id": "run-original-9"},
+    )
+    assert r.status_code == 200
+    assert calls["parent"] == "run-original-9"
 
 
 def test_submit_design_passes_preset_id(api_client, make_session_row, monkeypatch):
@@ -59,7 +79,7 @@ def test_submit_design_passes_component_type_when_available(
     calls = {}
     monkeypatch.setattr(
         "api.designs._start_design_run",
-        lambda s, p, preset_id=None, requested_component=None: calls.setdefault(
+        lambda s, p, preset_id=None, requested_component=None, parent_run_id=None: calls.setdefault(
             "component", requested_component
         )
         or "run-y",

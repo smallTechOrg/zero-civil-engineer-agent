@@ -25,11 +25,12 @@ def start_design_run(
     *,
     requested_component: str | None = None,
     params: dict | None = None,
+    parent_run_id: str | None = None,
 ) -> str:
     # Idempotent: the app configures structlog at startup, but the runner can be
     # entered directly (tests, scripts) — background-thread logs stay JSON either way.
     configure_logging(get_settings().log_level)
-    run_id = persistence.create_run_row(session_id, prompt)
+    run_id = persistence.create_run_row(session_id, prompt, parent_run_id=parent_run_id)
     # An explicit picker choice overrides auto-detect; otherwise `understand`
     # classifies and sets component_type. Default to box_culvert until then.
     component_type = requested_component or "box_culvert"

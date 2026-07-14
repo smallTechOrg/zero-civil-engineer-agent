@@ -415,12 +415,23 @@ def extract(state: AgentState) -> dict:
         try:
             params = param_model(**outcome.merged)
         except ValidationError as exc:
+            # Out-of-range / invalid-enum values are NOT a hard failure: turn them
+            # into a clarification the user can answer/refine (mirrors the
+            # missing-critical path). Genuine crashes still set `error`.
             message = validation_error_message(exc)
-            tracker.mark("Extract", "failed", detail=message)
+            invalid_fields = [
+                str(err["loc"][0]) for err in exc.errors() if err.get("loc")
+            ] or ["parameters"]
+            question = (
+                f"Some values fall outside what this component supports — {message}. "
+                "Please reply with corrected values and I'll re-run the design."
+            )
             return {
+                "params": None,
+                "invalid_fields": invalid_fields,
+                "clarification_question": question,
                 "token_usage": token_usage,
                 "steps": tracker.steps,
-                "error": f"Parameter validation failed: {message}",
             }
         warnings = module.unusual_value_warnings(params)
         for warning in warnings:
@@ -468,9 +479,17 @@ def clarify(state: AgentState) -> dict:
     """Deterministic: ONE pointed question, run ends at needs_input (terminal)."""
     tracker = StepTracker(state)
     module = _module(state)
-    missing = state["missing_critical"]
-    field = next((f for f in module.critical_fields if f in missing), missing[0])
-    question = module.clarify_question(field)
+    # Either a missing critical field, or an extracted-but-invalid value. For the
+    # invalid case the extract node pre-composes the question (module.clarify_question
+    # only knows critical fields and would KeyError on e.g. steel_grade).
+    missing = state.get("missing_critical") or state.get("invalid_fields") or ["parameters"]
+    precomposed = state.get("clarification_question")
+    if precomposed:
+        question = precomposed
+        field = missing[0]
+    else:
+        field = next((f for f in module.critical_fields if f in missing), missing[0])
+        question = module.clarify_question(field)
     publish(
         state["run_id"], "clarification", {"question": question, "missing_param": field}
     )

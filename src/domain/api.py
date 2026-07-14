@@ -29,6 +29,10 @@ class DesignSubmitRequest(BaseModel):
     # that module's `param_model` (422 PARAMS_INVALID on failure), and the run
     # bypasses the LLM understand/extract intake. NL components ignore it.
     params: dict | None = None
+    # Refinement lineage: the run_id of the design currently open when this submit
+    # is a REFINE. The new run then joins that design's record (same card, new
+    # version) rather than starting a fresh record. Omit / null starts a NEW record.
+    parent_run_id: str | None = None
 
 
 # --- Responses ----------------------------------------------------------------
@@ -83,6 +87,9 @@ class ComponentInfo(BaseModel):
 class RunSnapshot(BaseModel):
     run_id: str
     session_id: str
+    # Refinement-lineage record root: the run_id of this record's original design,
+    # or NULL when this run IS the root. Frontend falls back to run_id when null.
+    root_run_id: str | None = None
     prompt: str
     component_type: str = "box_culvert"
     status: str
@@ -109,7 +116,11 @@ class RunSnapshot(BaseModel):
 class RunListItem(BaseModel):
     run_id: str
     session_id: str
+    # Refinement-lineage record root: NULL when this run IS the root. The frontend
+    # groups the records rail on `root_run_id ?? run_id` (effective record id).
+    root_run_id: str | None = None
     prompt: str
+    component_type: str = "box_culvert"
     status: str
     verdict: str | None = None
     params_summary: str
