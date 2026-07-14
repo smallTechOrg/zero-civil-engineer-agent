@@ -13,6 +13,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -44,6 +45,39 @@ ARTIFACT_FILES: dict[str, tuple[str, str]] = {
     "sfd.svg": ("image/svg+xml", "inline"),
     "model.glb": ("model/gltf-binary", "attachment"),
     "model.step": ("application/step", "attachment"),
+    # Standard-driven components (M-00004) emit one extra artefact: the reportlab
+    # drawing sheet, served inline so the browser can open the PDF.
+    "m00004_sheet.pdf": ("application/pdf", "inline"),
+    # M-00004 Phase 2 — the full RDSO GA sheet: ten per-diagram DXF/SVG pairs
+    # (DXF attachment, SVG inline), the four multi-body STEP parts (attachment),
+    # the review-stage composed PDF (inline) and the zip bundle (attachment).
+    # Filenames/mimes/dispositions are normative (capability doc Phase 2 table).
+    "elevation.dxf": ("image/vnd.dxf", "attachment"),
+    "elevation.svg": ("image/svg+xml", "inline"),
+    "cross_section.dxf": ("image/vnd.dxf", "attachment"),
+    "cross_section.svg": ("image/svg+xml", "inline"),
+    "plan.dxf": ("image/vnd.dxf", "attachment"),
+    "plan.svg": ("image/svg+xml", "inline"),
+    "curtain_wall.dxf": ("image/vnd.dxf", "attachment"),
+    "curtain_wall.svg": ("image/svg+xml", "inline"),
+    "typical_details.dxf": ("image/vnd.dxf", "attachment"),
+    "typical_details.svg": ("image/svg+xml", "inline"),
+    "return_wall.dxf": ("image/vnd.dxf", "attachment"),
+    "return_wall.svg": ("image/svg+xml", "inline"),
+    "bar_shape_table.dxf": ("image/vnd.dxf", "attachment"),
+    "bar_shape_table.svg": ("image/svg+xml", "inline"),
+    "notations.dxf": ("image/vnd.dxf", "attachment"),
+    "notations.svg": ("image/svg+xml", "inline"),
+    "notes.dxf": ("image/vnd.dxf", "attachment"),
+    "notes.svg": ("image/svg+xml", "inline"),
+    "haunch_table.dxf": ("image/vnd.dxf", "attachment"),
+    "haunch_table.svg": ("image/svg+xml", "inline"),
+    "assembly.step": ("application/step", "attachment"),
+    "box.step": ("application/step", "attachment"),
+    "curtain_wall.step": ("application/step", "attachment"),
+    "return_wall.step": ("application/step", "attachment"),
+    "m00004_ga_sheet.pdf": ("application/pdf", "inline"),
+    "m00004_bundle.zip": ("application/zip", "attachment"),
 }
 
 
@@ -55,11 +89,18 @@ def _start_design_run(
     prompt: str,
     preset_id: str | None = None,
     requested_component: str | None = None,
+    params: dict | None = None,
+    parent_run_id: str | None = None,
 ) -> str:
     from graph.runner import start_design_run
 
     return start_design_run(
-        session_id, prompt, preset_id=preset_id, requested_component=requested_component
+        session_id,
+        prompt,
+        preset_id=preset_id,
+        requested_component=requested_component,
+        params=params,
+        parent_run_id=parent_run_id,
     )
 
 
@@ -67,6 +108,13 @@ def _component_is_available(type_id: str) -> bool:
     from components import registry
 
     return registry.is_available(type_id)
+
+
+def _resolve_component(type_id: str):
+    """The registered module for `type_id` (for synchronous params validation)."""
+    from components import registry
+
+    return registry.get(type_id)
 
 
 def _progress_is_active(run_id: str) -> bool:
@@ -92,6 +140,7 @@ def _snapshot_from_row(row: DesignRunRow, artifact_rows: list[ArtifactRow]) -> R
     return RunSnapshot(
         run_id=row.id,
         session_id=row.session_id,
+        root_run_id=row.root_run_id,
         prompt=row.prompt,
         component_type=row.component_type,
         status=row.status,
@@ -160,16 +209,58 @@ def submit_design(
         )
 
     prompt = req.prompt.strip()
-    if not prompt:
-        raise api_error("EMPTY_PROMPT", "Prompt must not be blank", 422)
-
     requested_component = req.component_type
-    if requested_component is not None and not _component_is_available(requested_component):
-        raise api_error(
-            "UNKNOWN_COMPONENT",
-            f"'{requested_component}' is not a registered, available component type",
-            422,
-        )
+    params = req.params or None  # an empty dict counts as "no params"
+
+    validated_params: dict | None = None
+    if params:
+        # --- Params-direct submission (standard-driven component) -------------
+        # Requires a component_type; `params` is validated SYNCHRONOUSLY against
+        # the module's param_model. On success the run bypasses the LLM intake.
+        if not requested_component:
+            raise api_error(
+                "COMPONENT_REQUIRED",
+                "A params-direct submission requires 'component_type'",
+                422,
+            )
+        if not _component_is_available(requested_component):
+            raise api_error(
+                "UNKNOWN_COMPONENT",
+                f"'{requested_component}' is not a registered, available component type",
+                422,
+            )
+        module = _resolve_component(requested_component)
+        try:
+            validated_params = module.param_model(**params).model_dump(mode="json")
+        except ValidationError as exc:
+            raise api_error(
+                "PARAMS_INVALID",
+                f"Parameter validation failed: {_validation_detail(exc)}",
+                422,
+            ) from exc
+        if not prompt:
+            prompt = _synth_params_prompt(requested_component, validated_params)
+    else:
+        # --- Natural-language submission --------------------------------------
+        if not prompt:
+            raise api_error("EMPTY_PROMPT", "Prompt must not be blank", 422)
+        if requested_component is not None:
+            if not _component_is_available(requested_component):
+                raise api_error(
+                    "UNKNOWN_COMPONENT",
+                    f"'{requested_component}' is not a registered, available component type",
+                    422,
+                )
+            # A params-direct-only component (e.g. M-00004) is reachable ONLY via
+            # the typed form — an NL submit without params is rejected.
+            module = _resolve_component(requested_component)
+            if getattr(module, "params_direct_only", False):
+                raise api_error(
+                    "PARAMS_REQUIRED",
+                    f"'{requested_component}' requires a typed 'params' object "
+                    "(it is a standard-driven, form-only component)",
+                    422,
+                )
 
     if not session_row.title:
         session_row.title = prompt[:SESSION_TITLE_MAX_CHARS]
@@ -177,13 +268,29 @@ def submit_design(
     # Persist before the background run thread opens its own DB session.
     session.commit()
 
-    # Keep the legacy 3-arg call when no picker choice is present (auto-detect);
-    # only thread requested_component through when the picker forces a type.
-    if requested_component is None:
+    # Params-direct threads the validated dict — a standard-driven, form-only
+    # component has no refine lineage. Otherwise keep the legacy 3-arg call when
+    # neither a picker choice nor a refine parent is present (auto-detect, new
+    # record); thread requested_component and/or parent_run_id through when either
+    # is supplied. An unknown parent_run_id is resolved gracefully in
+    # create_run_row (treated as a new record), never a 500.
+    if validated_params is not None:
+        run_id = _start_design_run(
+            session_id,
+            prompt,
+            req.preset_id,
+            requested_component=requested_component,
+            params=validated_params,
+        )
+    elif requested_component is None and req.parent_run_id is None:
         run_id = _start_design_run(session_id, prompt, req.preset_id)
     else:
         run_id = _start_design_run(
-            session_id, prompt, req.preset_id, requested_component=requested_component
+            session_id,
+            prompt,
+            req.preset_id,
+            requested_component=requested_component,
+            parent_run_id=req.parent_run_id,
         )
     return ok(
         DesignSubmitted(
@@ -224,7 +331,9 @@ def list_designs(
         RunListItem(
             run_id=row.id,
             session_id=row.session_id,
+            root_run_id=row.root_run_id,
             prompt=row.prompt,
+            component_type=row.component_type,
             status=row.status,
             verdict=row.verdict,
             params_summary=_params_summary(_loads(row.params_json, None), row.component_type),
@@ -316,6 +425,29 @@ def _fmt_num(value: float) -> str:
 
 
 RETAINING_WALL_TYPE = "rcc_cantilever_retaining_wall"
+M00004_TYPE = "m00004_box_culvert"
+
+
+def _validation_detail(exc: ValidationError) -> str:
+    """A compact 'field: message' join of a pydantic ValidationError for the API."""
+    return "; ".join(
+        f"{'.'.join(str(loc) for loc in err['loc']) or '(root)'}: {err['msg']}"
+        for err in exc.errors()
+    )
+
+
+def _synth_params_prompt(component_type: str, params: dict) -> str:
+    """A short synthetic audit prompt for a params-direct submit with no prompt."""
+    if component_type == M00004_TYPE:
+        span = params.get("clear_span_m")
+        height = params.get("clear_height_m")
+        fill = params.get("cushion_m")
+        if span is not None and height is not None and fill is not None:
+            return (
+                f"M-00004 standard box culvert {_fmt_num(span)}x{_fmt_num(height)} m, "
+                f"fill {_fmt_num(fill)} m"
+            )
+    return f"{component_type} — standard component (parameter form)"
 
 
 def _params_summary(params: dict | None, component_type: str | None = None) -> str:
@@ -323,12 +455,15 @@ def _params_summary(params: dict | None, component_type: str | None = None) -> s
 
     Culvert (default): '4.0 × 3.0 m, cushion 2.5 m, 25t-2008'.
     Retaining wall: '5.0 m retained, SBC 200 kN/m²'.
+    M-00004 std box culvert: '4.0 × 4.0 m, fill 2.0 m (M-00004 std)'.
     Empty string when there are no params (e.g. a failed/clarifying run).
     """
     if not params:
         return ""
     if component_type == RETAINING_WALL_TYPE:
         return _retaining_wall_summary(params)
+    if component_type == M00004_TYPE:
+        return _m00004_summary(params)
     try:
         span, height, cushion = (
             params["clear_span_m"],
@@ -350,3 +485,16 @@ def _retaining_wall_summary(params: dict) -> str:
     except KeyError:
         return ""
     return f"{_fmt_num(height)} m retained, SBC {_fmt_num(sbc)} kN/m²"
+
+
+def _m00004_summary(params: dict) -> str:
+    """e.g. '4.0 × 4.0 m, fill 2.0 m (M-00004 std)' — empty when criticals absent."""
+    try:
+        span = params["clear_span_m"]
+        height = params["clear_height_m"]
+        fill = params["cushion_m"]
+    except KeyError:
+        return ""
+    return (
+        f"{_fmt_num(span)} × {_fmt_num(height)} m, fill {_fmt_num(fill)} m (M-00004 std)"
+    )

@@ -38,11 +38,14 @@ Routers: `src/api/sessions.py`, `src/api/designs.py` (submit + snapshot + SSE + 
 {
   "prompt": "single box culvert, 4 m clear span, 3 m height, 2.5 m cushion, BG single line, 25t loading",
   "preset_id": "optional — default preset used when omitted",
-  "component_type": "optional — picker choice (registry type_id); overrides auto-detect. Omit to auto-detect from the prompt"
+  "component_type": "optional — picker choice (registry type_id); overrides auto-detect. Omit to auto-detect from the prompt",
+  "params": "optional — typed parameter object for a STANDARD-DRIVEN (params-direct) component; see below"
 }
 ```
 
 `component_type`, when present and `status="available"`, is threaded to the run as `requested_component` and forces that component module; when omitted, `understand` classifies. A `422 UNKNOWN_COMPONENT` is returned if it is not a registered available type.
+
+**Params-direct submit (standard-driven components).** When `params` is present the request is a **params-direct** submission: it requires `component_type`, and the API validates `params` **synchronously** against that module's `param_model`, returning `422 PARAMS_INVALID` (with the field errors) on failure. On success the validated dict is threaded to the run, the graph **bypasses the LLM understand/extract nodes** (see [architecture.md → Params-direct intake path](architecture.md#params-direct-intake-path-standard-driven-components)), and `prompt` is stored only for the audit trail/library row (a short synthetic prompt is fine). A component that declares `params_direct_only = True` (e.g. [M-00004 Standard Box Culvert](capabilities/m00004-box-culvert.md)) submitted **without** `params` is rejected `422 PARAMS_REQUIRED`. NL components ignore `params`.
 
 **Response `data`:**
 ```json
@@ -60,6 +63,9 @@ Routers: `src/api/sessions.py`, `src/api/designs.py` (submit + snapshot + SSE + 
 | 404 | NOT_FOUND | Unknown session |
 | 409 | RUN_ACTIVE | A run in this session is still `running` |
 | 422 | EMPTY_PROMPT | Blank/whitespace prompt |
+| 422 | UNKNOWN_COMPONENT | `component_type` is not a registered available type |
+| 422 | PARAMS_INVALID | Params-direct submit: `params` fails the module's `param_model` validation |
+| 422 | PARAMS_REQUIRED | A `params_direct_only` component was submitted without `params` |
 
 ### `GET /api/designs/{run_id}/events` — SSE event stream
 
@@ -110,7 +116,7 @@ Phase-gated fields (`checks`, `checklist`, `verdict`, `suggestions`) are `null`/
 
 ### `GET /api/designs/{run_id}/artifacts/{filename}`
 
-**Purpose:** fetch/download an artefact file. Filename must be one of the fixed set in [data.md](data.md#artefact-file-storage) (whitelist — no path traversal). Served with the artefact's MIME type; `ga.dxf`, `model.step`, `model.glb` get `Content-Disposition: attachment`; `ga.svg`, `bmd.svg`, `sfd.svg`, JSON and markdown are served inline.
+**Purpose:** fetch/download an artefact file. Filename must be one of the fixed set in [data.md](data.md#artefact-file-storage) (whitelist — no path traversal). Served with the artefact's MIME type; `ga.dxf`, `model.step`, `model.glb` get `Content-Disposition: attachment`; `ga.svg`, `bmd.svg`, `sfd.svg`, `m00004_sheet.pdf` (`application/pdf`), JSON and markdown are served inline. `m00004_sheet.pdf` is added to the `ARTIFACT_FILES` whitelist by the M-00004 component addition.
 
 **Error cases:** 404 unknown run / artefact not (yet) generated; 400 filename not in whitelist.
 

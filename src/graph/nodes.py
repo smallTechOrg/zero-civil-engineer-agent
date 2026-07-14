@@ -47,6 +47,38 @@ _ARTIFACT_MIME = {
     "sfd_svg": "image/svg+xml",
     "model_glb": "model/gltf-binary",
     "model_step": "application/step",
+    # Standard-driven components (e.g. M-00004) return one extra artefact kind
+    # beyond the fixed set — the reportlab standard drawing sheet.
+    "m00004_sheet": "application/pdf",
+    # M-00004 Phase 2 — the full RDSO GA sheet: ten per-diagram DXF/SVG pairs,
+    # the four multi-body STEP parts, and the review-stage composed PDF + zip
+    # bundle. Filenames/mimes are normative (capability doc Phase 2 table).
+    "elevation_dxf": "image/vnd.dxf",
+    "elevation_svg": "image/svg+xml",
+    "cross_section_dxf": "image/vnd.dxf",
+    "cross_section_svg": "image/svg+xml",
+    "plan_dxf": "image/vnd.dxf",
+    "plan_svg": "image/svg+xml",
+    "curtain_wall_dxf": "image/vnd.dxf",
+    "curtain_wall_svg": "image/svg+xml",
+    "typical_details_dxf": "image/vnd.dxf",
+    "typical_details_svg": "image/svg+xml",
+    "return_wall_dxf": "image/vnd.dxf",
+    "return_wall_svg": "image/svg+xml",
+    "bar_shape_table_dxf": "image/vnd.dxf",
+    "bar_shape_table_svg": "image/svg+xml",
+    "notations_dxf": "image/vnd.dxf",
+    "notations_svg": "image/svg+xml",
+    "notes_dxf": "image/vnd.dxf",
+    "notes_svg": "image/svg+xml",
+    "haunch_table_dxf": "image/vnd.dxf",
+    "haunch_table_svg": "image/svg+xml",
+    "assembly_step": "application/step",
+    "box_step": "application/step",
+    "curtain_wall_step": "application/step",
+    "return_wall_step": "application/step",
+    "m00004_ga_sheet": "application/pdf",
+    "m00004_bundle": "application/zip",
 }
 _ARTIFACT_ORDER = ("ga_dxf", "ga_svg")
 
@@ -336,6 +368,50 @@ def understand(state: AgentState) -> dict:
 
 
 @_node
+def seed_params(state: AgentState) -> dict:
+    """Params-direct entry — seed the run from a typed parameter form, NO LLM.
+
+    Standard-driven components (`params_direct`) skip the `understand`/`extract`
+    LLM intake entirely: the validated params are already on the state (the API
+    validated them synchronously and the runner seeded them). This deterministic
+    node marks the Understand + Extract UI steps `done` with a "standard
+    component / parameter form" detail, narrates a deterministic plan, surfaces
+    any module `unusual_value_warnings`, and routes on to `analyse`. It makes
+    ZERO LLM calls — no `understand`, no `extract`.
+    """
+    tracker = StepTracker(state)
+    detail = "Entered via the parameter form — standard component"
+    tracker.mark("Understand", "done", detail=detail)
+    tracker.mark("Extract", "active", detail=detail)
+    try:
+        module = _module(state)
+        params_model = module.param_model(**(state.get("params") or {}))
+        plan = (
+            f"Reproducing the {module.display_name} from the entered parameters — "
+            "selecting the nearest standard configuration, then building the GA "
+            "drawing, the 3D solid and the standard drawing sheet deterministically. "
+            "Every catalogue-derived value is PROVISIONAL."
+        )
+        _narrate(state, plan)
+        warnings = module.unusual_value_warnings(params_model)
+        for warning in warnings:
+            publish(state["run_id"], "warning", {"message": warning})
+        tracker.mark("Extract", "done", detail=detail)
+        return {
+            "in_scope": True,
+            "plan_text": plan,
+            "warnings": list(state.get("warnings") or []) + warnings,
+            "steps": tracker.steps,
+        }
+    except Exception as exc:
+        tracker.mark("Extract", "failed", detail=str(exc))
+        return {
+            "steps": tracker.steps,
+            "error": f"Seeding the parameter-form run failed: {exc}",
+        }
+
+
+@_node
 def extract(state: AgentState) -> dict:
     tracker = StepTracker(state)
     tracker.mark("Extract", "active", detail="Extracting design parameters")
@@ -368,12 +444,23 @@ def extract(state: AgentState) -> dict:
         try:
             params = param_model(**outcome.merged)
         except ValidationError as exc:
+            # Out-of-range / invalid-enum values are NOT a hard failure: turn them
+            # into a clarification the user can answer/refine (mirrors the
+            # missing-critical path). Genuine crashes still set `error`.
             message = validation_error_message(exc)
-            tracker.mark("Extract", "failed", detail=message)
+            invalid_fields = [
+                str(err["loc"][0]) for err in exc.errors() if err.get("loc")
+            ] or ["parameters"]
+            question = (
+                f"Some values fall outside what this component supports — {message}. "
+                "Please reply with corrected values and I'll re-run the design."
+            )
             return {
+                "params": None,
+                "invalid_fields": invalid_fields,
+                "clarification_question": question,
                 "token_usage": token_usage,
                 "steps": tracker.steps,
-                "error": f"Parameter validation failed: {message}",
             }
         warnings = module.unusual_value_warnings(params)
         for warning in warnings:
@@ -421,9 +508,17 @@ def clarify(state: AgentState) -> dict:
     """Deterministic: ONE pointed question, run ends at needs_input (terminal)."""
     tracker = StepTracker(state)
     module = _module(state)
-    missing = state["missing_critical"]
-    field = next((f for f in module.critical_fields if f in missing), missing[0])
-    question = module.clarify_question(field)
+    # Either a missing critical field, or an extracted-but-invalid value. For the
+    # invalid case the extract node pre-composes the question (module.clarify_question
+    # only knows critical fields and would KeyError on e.g. steel_grade).
+    missing = state.get("missing_critical") or state.get("invalid_fields") or ["parameters"]
+    precomposed = state.get("clarification_question")
+    if precomposed:
+        question = precomposed
+        field = missing[0]
+    else:
+        field = next((f for f in module.critical_fields if f in missing), missing[0])
+        question = module.clarify_question(field)
     publish(
         state["run_id"], "clarification", {"question": question, "missing_param": field}
     )
@@ -591,6 +686,12 @@ def draw(state: AgentState) -> dict:
         artefacts = list(state.get("artefacts") or [])
         for kind in _ARTIFACT_ORDER:
             _emit_artifact(state, artefacts, kind, paths[kind], "draw")
+        # Emit any additional artefact kinds the module returns beyond the fixed
+        # GA pair (e.g. M-00004's `m00004_sheet` PDF). Existing components return
+        # only the fixed keys, so their behaviour is byte-identical.
+        for kind, path in paths.items():
+            if kind not in _ARTIFACT_ORDER:
+                _emit_artifact(state, artefacts, kind, path, "draw")
         tracker.mark("Draw", "done", detail="GA drawing ready (DXF + SVG)")
         return {"artefacts": artefacts, "steps": tracker.steps}
     except Exception as exc:
@@ -612,8 +713,11 @@ def model3d(state: AgentState) -> dict:
         out_dir = _artifacts_dir(state)
         _narrate(state, "Building the 3D solid — GLB for the viewer, STEP for CAD…")
         paths = module.model3d(state["geometry"], out_dir)
-        for kind in ("model_glb", "model_step"):
-            _emit_artifact(state, artefacts, kind, paths[kind], "model3d")
+        # Emit WHATEVER keys the module returns — components that return only the
+        # fixed `model_glb`/`model_step` pair are byte-identical; M-00004 also
+        # returns the multi-body STEP parts (assembly/box/curtain_wall/return_wall).
+        for kind, path in paths.items():
+            _emit_artifact(state, artefacts, kind, path, "model3d")
         return {"artefacts": artefacts}
     except Exception as exc:  # never fatal, never an `error` state
         _log(state, "model3d").error("model3d_failed", error=str(exc))
@@ -662,29 +766,82 @@ def review(state: AgentState) -> dict:
             _emit_artifact(state, artefacts, kind, out_dir / filename, "review")
 
         _narrate(state, "Drafting the proof-check memo…")
-        llm = LLMClient().generate(
-            proof.memo_facts, system=module.memo_prompt(), temperature=0.2
-        )
-        token_usage = _record_llm_call(state, "review", llm)
-        narration: str | None = (llm.text or "").strip()
-        problems = proof.validate_narration(narration)
-        if problems:
-            # Rejection is never fatal — the memo stands fully deterministic.
+        # The memo narration is the one OPTIONAL, grounded LLM call. Neither a
+        # transport/quota failure (e.g. Gemini 429 RESOURCE_EXHAUSTED) nor a
+        # grounding rejection is fatal: on either, the narration is discarded and
+        # the memo composes fully deterministically (spec: "memo narration failing
+        # grounding is discarded → the memo composes deterministically (never
+        # fatal)"). Only genuine proof-check computation failures fail the run.
+        token_usage = list(state.get("token_usage") or [])
+        narration: str | None = None
+        try:
+            llm = LLMClient().generate(
+                proof.memo_facts, system=module.memo_prompt(), temperature=0.2
+            )
+        except Exception as exc:
+            # Transport/quota failure on the OPTIONAL narration call — non-fatal.
             publish(
                 state["run_id"],
                 "warning",
                 {
-                    "message": "The LLM memo narration failed the deterministic "
-                    "grounding validation and was discarded — the memo is fully "
-                    "deterministic."
+                    "message": "The LLM memo narration was unavailable "
+                    "(transport/quota) — composing the fully deterministic memo."
                 },
             )
-            _log(state, "review").warning("memo_narration_rejected", problems=problems)
-            narration = None
+            _log(state, "review").warning("memo_narration_unavailable", error=str(exc))
+        else:
+            token_usage = _record_llm_call(state, "review", llm)
+            narration = (llm.text or "").strip()
+            problems = proof.validate_narration(narration)
+            if problems:
+                # Rejection is never fatal — the memo stands fully deterministic.
+                publish(
+                    state["run_id"],
+                    "warning",
+                    {
+                        "message": "The LLM memo narration failed the deterministic "
+                        "grounding validation and was discarded — the memo is fully "
+                        "deterministic."
+                    },
+                )
+                _log(state, "review").warning(
+                    "memo_narration_rejected", problems=problems
+                )
+                narration = None
         memo_md = proof.render_memo(narration)
         memo_path = out_dir / proof.memo_filename
         memo_path.write_text(memo_md, encoding="utf-8")
         _emit_artifact(state, artefacts, proof.memo_kind, memo_path, "review")
+
+        # Review-stage composed sheet + zip bundle — an M-00004-ONLY hook,
+        # guarded by getattr so no other component is affected. NON-FATAL BY
+        # DESIGN (mirrors the model3d policy): a compose failure logs, publishes
+        # ONE `warning` event, and the run/verdict continue — the individual
+        # per-diagram DXFs + STEP parts remain downloadable. It runs here because
+        # by review both `draw` (2D — always on disk) and `model3d` (STEP —
+        # possibly absent, non-fatal) have completed; it is independent of the
+        # proof-check above.
+        compose_hook = getattr(module, "compose", None)
+        if callable(compose_hook):
+            try:
+                composed = compose_hook(
+                    state["params"], state["geometry"], out_dir, state["run_id"]
+                )
+                for kind, path in composed.items():
+                    _emit_artifact(state, artefacts, kind, path, "review")
+            except Exception as exc:  # never fatal, never an `error` state
+                _log(state, "review").error("compose_failed", error=str(exc))
+                publish(
+                    state["run_id"],
+                    "warning",
+                    {
+                        "message": (
+                            "Composed GA sheet / bundle generation failed — the "
+                            "individual diagrams and STEP parts stand alone: "
+                            f"{exc}"
+                        )
+                    },
+                )
 
         type_summary = module.type_summary(
             params=state["params"],
@@ -751,7 +908,10 @@ def finalize(state: AgentState) -> dict:
     # runs never get chips; clarify never reaches finalize).
     suggestions: list[str] = []
     token_usage = list(state.get("token_usage") or [])
-    if status == "completed":
+    # Params-direct (form-only) runs show no NL prompt box, so refinement chips
+    # would dangle — skip the suggestions LLM call entirely (capability doc), the
+    # M-00004 path stays at exactly one optional grounded LLM call (the memo).
+    if status == "completed" and not state.get("params_direct"):
         suggestions, token_usage = _refinement_suggestions(state)
     prompt_tokens, completion_tokens = run_totals(token_usage)
     cost_usd = compute_cost_usd(prompt_tokens, completion_tokens)

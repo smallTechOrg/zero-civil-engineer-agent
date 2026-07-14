@@ -14,13 +14,31 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def create_run_row(session_id: str, prompt: str) -> str:
-    """Insert the run row (status "running", started_at now) and return its id."""
+def create_run_row(
+    session_id: str, prompt: str, *, parent_run_id: str | None = None
+) -> str:
+    """Insert the run row (status "running", started_at now) and return its id.
+
+    Refinement lineage: when `parent_run_id` names an existing run, the new row
+    joins that run's record — `root_run_id = parent.root_run_id or parent.id`
+    (the record root, so a v3 refine points at v1, never at v2). A missing or
+    unknown `parent_run_id` leaves `root_run_id` NULL, starting a new record.
+    """
     from db.models import DesignRunRow
     from db.session import create_db_session
 
     with create_db_session() as session:
-        row = DesignRunRow(session_id=session_id, prompt=prompt, status="running")
+        root_run_id: str | None = None
+        if parent_run_id:
+            parent = session.get(DesignRunRow, parent_run_id)
+            if parent is not None:
+                root_run_id = parent.root_run_id or parent.id
+        row = DesignRunRow(
+            session_id=session_id,
+            prompt=prompt,
+            status="running",
+            root_run_id=root_run_id,
+        )
         session.add(row)
         session.flush()
         return row.id

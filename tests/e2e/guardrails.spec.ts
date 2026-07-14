@@ -21,10 +21,12 @@ test.describe('guard rails (real backend + Gemini)', () => {
     await page.getByTestId('prompt-submit').click()
     await expect(page.getByTestId('prompt-submit')).toBeDisabled({ timeout: 500 })
 
-    // The scope statement arrives as an informational agent reply in the turn
-    // history once the run ends `out_of_scope`.
-    await expect(page.getByTestId('scope-statement')).toBeVisible({ timeout: 180_000 })
-    await expect(page.getByTestId('turn-item').first()).toContainText('Out of scope')
+    // The scope statement arrives as an informational agent reply in the run
+    // status line once the run ends `out_of_scope`.
+    await expect(page.getByTestId('status-line')).toBeVisible({ timeout: 180_000 })
+    await expect(page.getByTestId('status-line')).toContainText(/scope/i)
+    // The design record for this turn is present in the Design Records rail.
+    await expect(page.getByTestId('record-item').first()).toBeVisible()
 
     // Informational, never error styling or a failed tracker.
     await expect(page.getByTestId('error-banner')).toHaveCount(0)
@@ -45,6 +47,10 @@ test.describe('guard rails (real backend + Gemini)', () => {
     await page.getByTestId('prompt-submit').click()
     await expect(page.getByTestId('prompt-submit')).toBeDisabled({ timeout: 500 })
 
+    // The clarification prompt lives in the Define stage in the new IA.
+    await expect(page.getByTestId('stage-rail')).toBeVisible({ timeout: 180_000 })
+    await page.getByTestId('stage-tab-define').click()
+
     // Exactly ONE amber clarification card, naming the missing clear span.
     const card = page.getByTestId('clarification-card')
     await expect(card).toHaveCount(1, { timeout: 180_000 })
@@ -58,6 +64,7 @@ test.describe('guard rails (real backend + Gemini)', () => {
 
     // Never rendered as a failure.
     await expect(page.getByTestId('error-banner')).toHaveCount(0)
-    await expect(page.getByTestId('turn-item').first()).toContainText('Needs input')
+    // The design record for this turn is present in the Design Records rail.
+    await expect(page.getByTestId('record-item').first()).toBeVisible()
   })
 })

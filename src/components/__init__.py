@@ -55,6 +55,15 @@ try:  # pragma: no cover - the machine_element package is added by a sibling sli
 except ImportError:
     pass
 
+# M-00004 Standard Box Culvert (RDSO) — the ninth registered component, a
+# standard-driven (params-direct) civil type. Self-registers on import; guarded
+# so the wiring slice's unit tests still import `components` before the module
+# directory (sibling slice a) lands.
+try:  # pragma: no cover - the m00004_box_culvert package is added by a sibling slice
+    from components import m00004_box_culvert  # noqa: F401
+except ImportError:
+    pass
+
 # Roadmap ("coming soon") preview stubs — imported LAST so any future preview
 # sorts after every available component in the gallery. As of Expansion Phase 3
 # every roadmap component (civil breadth + mechanical) is built and available, so

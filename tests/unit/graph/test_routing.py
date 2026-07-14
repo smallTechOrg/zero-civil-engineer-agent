@@ -35,5 +35,16 @@ def test_error_beats_missing_critical_in_extract_routing():
     assert route_extract(state) == "handle_error"
 
 
+def test_extract_invalid_fields_routes_to_clarify():
+    # Out-of-range / invalid-enum values become a clarification, not a failure.
+    state = {"error": None, "missing_critical": [], "invalid_fields": ["span_m"]}
+    assert route_extract(state) == "clarify"
+
+
+def test_error_beats_invalid_fields_in_extract_routing():
+    state = {"error": "boom", "invalid_fields": ["span_m"]}
+    assert route_extract(state) == "handle_error"
+
+
 def test_route_on_error_sends_any_error_to_handle_error():
     assert route_on_error("draw")({"error": "sizing failed"}) == "handle_error"

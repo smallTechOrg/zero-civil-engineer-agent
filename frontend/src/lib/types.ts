@@ -173,10 +173,136 @@ export interface ComponentCard {
   status: ComponentStatus
   codes: string[]
   example_prompt?: string | null
+  /**
+   * Standard-driven components (e.g. M-00004) are form-only: intake bypasses the
+   * LLM. The API may expose this flag; when absent the frontend gates on the
+   * known `m00004_box_culvert` type id (see `isParamsDirectComponent`).
+   */
+  params_direct_only?: boolean | null
 }
 
 export interface ComponentCatalogue {
   components: ComponentCard[]
+}
+
+// ---------------------------------------------------------------------------
+// M-00004 Standard Box Culvert (RDSO) — params-direct component. Picking its
+// card reveals `M00004ParamForm` in place of the NL prompt box; the form submits
+// a typed `params` object (spec/capabilities/m00004-box-culvert.md § Inputs).
+// ---------------------------------------------------------------------------
+
+export const M00004_TYPE_ID = 'm00004_box_culvert'
+
+export type ConcreteGrade = 'M25' | 'M30' | 'M35' | 'M40'
+export type SteelGrade = 'Fe415' | 'Fe500'
+
+/** Exposure class — drives the backend's derived concrete grade (Very severe → M40). */
+export type ExposureCondition = 'moderate' | 'severe' | 'very_severe'
+
+/** `M00004Params` — the exact typed fields, defaults and hard ranges.
+ *  `concrete_grade` is `null` for Auto (the backend DERIVES the grade per
+ *  exposure/size — M35 typical, M40 under very-severe); a set value overrides. */
+export interface M00004Params {
+  clear_span_m: number
+  clear_height_m: number
+  cushion_m: number
+  surcharge_kn_m2: number
+  formation_width_m: number
+  side_slope_h_per_v: number
+  concrete_grade: ConcreteGrade | null
+  steel_grade: SteelGrade
+  exposure: ExposureCondition
+}
+
+// ---------------------------------------------------------------------------
+// M-00004 Phase 2 — the full RDSO/M-00004 GA sheet. The run now emits one
+// DXF + SVG per diagram (ten drawings/tables), genuinely-3D STEP parts, a
+// composed PDF sheet and a .zip bundle. The frontend renders these
+// data-drivenly: it maps each artefact KIND → a human label and shows only the
+// artefacts actually present on the run (a missing kind degrades gracefully —
+// omitted, never an error). The exact kind→filename strings are fixed by
+// spec/capabilities/m00004-box-culvert.md § "New artefact kinds → filenames".
+// ---------------------------------------------------------------------------
+
+/** One per-diagram drawing: its inline SVG kind + downloadable DXF kind + label. */
+export interface M00004Diagram {
+  /** Base identifier (used only for stable keys / test ids). */
+  key: string
+  /** Artefact kind whose SVG renders inline (e.g. `elevation_svg`). */
+  svgKind: string
+  /** Artefact kind downloadable as DXF (e.g. `elevation_dxf`). */
+  dxfKind: string
+  /** DXF filename for the download attribute (e.g. `elevation.dxf`). */
+  dxfFilename: string
+  /** Human name shown as the drawing's caption. */
+  label: string
+}
+
+/** The ten M-00004 per-diagram drawings/tables, in sheet order. */
+export const M00004_DIAGRAMS: M00004Diagram[] = [
+  { key: 'elevation', svgKind: 'elevation_svg', dxfKind: 'elevation_dxf', dxfFilename: 'elevation.dxf', label: 'Sectional Elevation at X-Y' },
+  { key: 'cross_section', svgKind: 'cross_section_svg', dxfKind: 'cross_section_dxf', dxfFilename: 'cross_section.dxf', label: 'Cross Section of R.C.C. Box' },
+  { key: 'plan', svgKind: 'plan_svg', dxfKind: 'plan_dxf', dxfFilename: 'plan.dxf', label: 'Plan' },
+  { key: 'curtain_wall', svgKind: 'curtain_wall_svg', dxfKind: 'curtain_wall_dxf', dxfFilename: 'curtain_wall.dxf', label: 'Section of Curtain / Drop Wall' },
+  { key: 'typical_details', svgKind: 'typical_details_svg', dxfKind: 'typical_details_dxf', dxfFilename: 'typical_details.dxf', label: 'Typical Details at A & B' },
+  { key: 'return_wall', svgKind: 'return_wall_svg', dxfKind: 'return_wall_dxf', dxfFilename: 'return_wall.dxf', label: 'Return Wall' },
+  { key: 'bar_shape_table', svgKind: 'bar_shape_table_svg', dxfKind: 'bar_shape_table_dxf', dxfFilename: 'bar_shape_table.dxf', label: 'Bar-Bending Shape Table' },
+  { key: 'notations', svgKind: 'notations_svg', dxfKind: 'notations_dxf', dxfFilename: 'notations.dxf', label: 'Notations' },
+  { key: 'notes', svgKind: 'notes_svg', dxfKind: 'notes_dxf', dxfFilename: 'notes.dxf', label: 'Notes' },
+  { key: 'haunch_table', svgKind: 'haunch_table_svg', dxfKind: 'haunch_table_dxf', dxfFilename: 'haunch_table.dxf', label: 'B×B Haunch Table' },
+]
+
+/** The six named engineering drawings the E2E asserts (subset of the ten). */
+export const M00004_NAMED_DRAWING_KEYS = [
+  'elevation',
+  'cross_section',
+  'plan',
+  'curtain_wall',
+  'typical_details',
+  'return_wall',
+] as const
+
+/** A downloadable STEP part (genuinely-3D solids + the Phase-1 fused solid). */
+export interface M00004StepPart {
+  kind: string
+  filename: string
+  label: string
+}
+
+/** The STEP downloads offered for an M-00004 run — the four Phase-2 parts plus
+ *  the Phase-1 fused solid. Rendered only for the parts actually present. */
+export const M00004_STEP_PARTS: M00004StepPart[] = [
+  { kind: 'assembly_step', filename: 'assembly.step', label: 'Full assembly (all bodies)' },
+  { kind: 'box_step', filename: 'box.step', label: 'Box barrel' },
+  { kind: 'curtain_wall_step', filename: 'curtain_wall.step', label: 'Curtain / drop wall' },
+  { kind: 'return_wall_step', filename: 'return_wall.step', label: 'Return wall' },
+  { kind: 'model_step', filename: 'model.step', label: 'Fused solid (Phase 1)' },
+]
+
+/** Composed full-sheet PDF (inline) + zip bundle artefact kinds. */
+export const M00004_GA_SHEET_KIND = 'm00004_ga_sheet'
+export const M00004_GA_SHEET_FILENAME = 'm00004_ga_sheet.pdf'
+export const M00004_BUNDLE_KIND = 'm00004_bundle'
+export const M00004_BUNDLE_FILENAME = 'm00004_bundle.zip'
+
+/** type_summary for M-00004 — `kind: "m00004_standard"`. */
+export interface M00004TypeSummary {
+  kind: 'm00004_standard'
+  config_id: string
+  thickness_mm: number
+  haunch_mm: number
+  barrel_length_mm: number
+  provisional_flags: string[]
+  verdict?: string
+}
+
+/**
+ * A params-direct (standard-driven) component is form-only. Prefer explicit
+ * API metadata when exposed, else gate on the known M-00004 type id.
+ */
+export function isParamsDirectComponent(card: ComponentCard | null | undefined): boolean {
+  if (!card) return false
+  return card.params_direct_only === true || card.type_id === M00004_TYPE_ID
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +372,8 @@ export type TypeSummary = Record<string, unknown>
 export interface RunSnapshot {
   run_id: string
   session_id: string
+  /** Refinement-lineage record root; null when this run IS the root. */
+  root_run_id?: string | null
   prompt: string
   status: RunStatus
   component_type?: string | null
@@ -304,7 +432,14 @@ export interface Preset {
 export interface RunListItem {
   run_id: string
   session_id: string
+  /**
+   * Refinement-lineage record root; null when this run IS the root. The records
+   * rail groups on the effective record id `root_run_id ?? run_id`.
+   */
+  root_run_id?: string | null
   prompt: string
+  /** Component type of the run (NOT NULL on the row; defaults to box_culvert). */
+  component_type: string
   status: RunStatus
   verdict: string | null
   params_summary: string | null
@@ -316,4 +451,31 @@ export interface RunListItem {
 export interface DesignListing {
   runs: RunListItem[]
   total: number
+}
+
+// ---------------------------------------------------------------------------
+// DesignStatusChip — client-side derivation of a design's status-at-a-glance
+// chip from the existing `status` + `verdict` fields (NO schema change).
+//   • Reviewed ✓  — verdict `recommended_for_approval`
+//   • Needs revision ✗ — verdict `return_for_revision`
+//   • Draft — everything else (completed w/o verdict, needs_input, out_of_scope,
+//     running, failed, or no verdict yet)
+// ---------------------------------------------------------------------------
+
+export type DesignChipTone = 'draft' | 'reviewed' | 'needs_revision'
+
+export interface DesignStatusChipInfo {
+  tone: DesignChipTone
+  label: string
+}
+
+/** Derive the records-rail status chip from a design's raw status + verdict. */
+export function DesignStatusChip(status: string, verdict: string | null): DesignStatusChipInfo {
+  if (verdict === 'recommended_for_approval') {
+    return { tone: 'reviewed', label: 'Reviewed ✓' }
+  }
+  if (verdict === 'return_for_revision') {
+    return { tone: 'needs_revision', label: 'Needs revision ✗' }
+  }
+  return { tone: 'draft', label: 'Draft' }
 }

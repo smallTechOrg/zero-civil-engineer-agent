@@ -189,7 +189,7 @@ function MetricRow({
     >
       <div>
         <p className="text-sm font-semibold text-slate-700">{label}</p>
-        <p className="text-xs text-slate-500">Required: {requirement}</p>
+        <p className="text-xs text-neutral-400">Required: {requirement}</p>
       </div>
       <div className="flex items-center gap-3">
         <span className={`text-lg font-bold tabular-nums ${pass ? 'text-emerald-800' : 'text-red-800'}`}>{value}</span>
@@ -215,7 +215,7 @@ export default function TypeSummaryPanel({
   if (!hasRun) {
     return (
       <div data-testid="type-summary-empty" className="flex h-full items-center justify-center p-8 text-center">
-        <p className="max-w-md text-base leading-relaxed text-slate-500">
+        <p className="max-w-md text-base leading-relaxed text-neutral-400">
           Run a design to see its stability / type summary here — factors of safety and bearing checks for a retaining
           wall, member checks for a culvert.
         </p>
@@ -226,7 +226,7 @@ export default function TypeSummaryPanel({
   if (runFailed) {
     return (
       <div className="flex h-full items-center justify-center p-8 text-center">
-        <p className="max-w-md text-base leading-relaxed text-slate-500">
+        <p className="max-w-md text-base leading-relaxed text-neutral-400">
           No stability summary — the run did not complete.
         </p>
       </div>
@@ -236,10 +236,10 @@ export default function TypeSummaryPanel({
   if (isRunning && !typeSummary) {
     return (
       <div data-testid="type-summary-loading" className="space-y-3 p-2">
-        <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
-        <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
-        <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
-        <p className="text-sm text-slate-500">Computing stability checks…</p>
+        <div className="h-16 animate-pulse rounded-lg bg-neutral-800" />
+        <div className="h-16 animate-pulse rounded-lg bg-neutral-800" />
+        <div className="h-16 animate-pulse rounded-lg bg-neutral-800" />
+        <p className="text-sm text-neutral-400">Computing stability checks…</p>
       </div>
     )
   }
@@ -249,7 +249,7 @@ export default function TypeSummaryPanel({
   if (!typeSummary || Object.keys(typeSummary).length === 0) {
     return (
       <div data-testid="type-summary-absent" className="flex h-full items-center justify-center p-8 text-center">
-        <p className="max-w-md text-base leading-relaxed text-slate-500">
+        <p className="max-w-md text-base leading-relaxed text-neutral-400">
           This component type does not publish a stability summary. See the Calc Sheet and Proof-Check tabs for its
           member checks and verdict.
         </p>
@@ -260,6 +260,19 @@ export default function TypeSummaryPanel({
   const consumed = new Set<string>()
   const fosRows: React.ReactNode[] = []
   const comparisonRows: React.ReactNode[] = []
+
+  // M-00004 Standard Box Culvert (kind `m00004_standard`): a standard-driven
+  // component whose thickness/haunch/reinforcement are always catalogue-derived,
+  // so every rendered value carries a PROVISIONAL marking regardless of whether
+  // any extrapolation flag fired (spec/capabilities/m00004-box-culvert.md).
+  const isM00004Standard =
+    typeSummary.kind === 'm00004_standard' || componentType === 'm00004_box_culvert'
+  const provisionalFlags = Array.isArray(typeSummary.provisional_flags)
+    ? (typeSummary.provisional_flags as unknown[]).map(f => String(f))
+    : []
+  if ('provisional_flags' in typeSummary) consumed.add('provisional_flags')
+  if ('kind' in typeSummary) consumed.add('kind')
+  if ('verdict' in typeSummary && isM00004Standard) consumed.add('verdict')
 
   // Factor-of-safety rows.
   for (const [key, desc] of Object.entries(FOS_DESCRIPTORS)) {
@@ -326,11 +339,39 @@ export default function TypeSummaryPanel({
   return (
     <div data-testid="type-summary-panel" data-component-type={componentType ?? ''} className="space-y-4 p-1">
       <div>
-        <h3 className="text-lg font-bold text-slate-900">Stability summary</h3>
-        <p className="text-sm text-slate-500">
-          Deterministic stability checks{componentType ? ` — ${componentType.replace(/_/g, ' ')}` : ''}.
+        <h3 className="text-lg font-bold text-neutral-100">
+          {isM00004Standard ? 'Standard configuration' : 'Stability summary'}
+        </h3>
+        <p className="text-sm text-neutral-400">
+          {isM00004Standard
+            ? 'Selected RDSO/M-00004 standard config — thickness, haunch and reinforcement reproduced from the digitized catalogue.'
+            : `Deterministic stability checks${componentType ? ` — ${componentType.replace(/_/g, ' ')}` : ''}.`}
         </p>
       </div>
+
+      {isM00004Standard && (
+        <div
+          data-testid="type-summary-provisional"
+          className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3"
+        >
+          <p className="text-sm font-bold uppercase tracking-wide text-amber-900">
+            PROVISIONAL — verify against RDSO/M-00004
+          </p>
+          <p className="mt-1 text-xs leading-relaxed text-amber-800">
+            Thickness, haunch and the reinforcement schedule are reproduced from a digitized PROVISIONAL subset of the
+            M-00004 annexure — not independently engineered. Not for construction.
+          </p>
+          {provisionalFlags.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-900">
+              {provisionalFlags.map((flag, i) => (
+                <li key={i} data-testid="provisional-flag">
+                  {flag}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {fosRows.length > 0 && (
         <div className="space-y-2">

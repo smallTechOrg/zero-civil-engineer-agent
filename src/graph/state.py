@@ -15,6 +15,7 @@ class AgentState(TypedDict, total=False):
     messages: list[dict]             # session history: [{role, content}] incl. prior clarification Q/A
     prior_params: dict | None        # accepted params from the session's last completed run
     preset_values: dict              # defaults preset applied to this run
+    params_direct: bool              # True → typed params form (bypass LLM intake, route to seed_params)
 
     # Understand
     in_scope: bool
@@ -24,6 +25,7 @@ class AgentState(TypedDict, total=False):
     # Extract
     params: dict | None              # validated CulvertParams (merged)
     missing_critical: list[str]
+    invalid_fields: list[str]        # extracted but out-of-range / invalid-enum → clarify (not fail)
     warnings: list[str]
     clarification_question: str | None
 

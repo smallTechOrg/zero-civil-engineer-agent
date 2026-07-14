@@ -121,6 +121,31 @@ class ComponentModule(Protocol):
 
 The box culvert becomes `src/components/culvert/module.py` — a thin `BoxCulvertComponent` whose methods delegate to the **unchanged** `src/engine`, `src/drawing`, `src/model3d`, `src/proofcheck` functions. All existing culvert unit/validation/integration/E2E tests stay green; the refactor only moves the dispatch decision from hard-coded node bodies into `registry.get(component_type)`.
 
+### Params-direct intake path (standard-driven components)
+
+Most components extract their parameters from natural language (`understand` → `extract`, two Gemini calls). A **standard-driven** component — one that reproduces a published standard rather than engineering from loads — instead takes **typed parameters from a form** and must **bypass the LLM intake entirely** (zero intake cost). The [M-00004 Standard Box Culvert](capabilities/m00004-box-culvert.md) is the first such component; the mechanism is generic and additive:
+
+- **DTO:** `DesignSubmitRequest` gains an optional `params: dict | None`. When present it requires `component_type`; `POST /api/sessions/{id}/designs` validates `params` against the module's `param_model` **synchronously** (`422 PARAMS_INVALID` on failure) and threads the validated dict to `start_design_run(..., params=validated)`. A component may declare `params_direct_only = True` (an extra attribute beyond the Protocol, like the culvert's `analysis_model`); submitting such a component with no `params` is rejected `422 PARAMS_REQUIRED`. NL components are unaffected — `params` is omitted and the legacy path runs.
+- **State + runner:** `AgentState` gains `params_direct: bool`. `start_design_run` seeds `state["params"]` with the validated dict, `state["component_type"]` with the requested type, and `params_direct = True`.
+- **Graph:** the fixed `set_entry_point("understand")` becomes a **conditional entry point** — `START → route_entry → {understand, seed_params}`. `route_entry` returns `seed_params` only when `params_direct` is set, else `understand`; **every existing (NL) run routes to `understand` unchanged**, so the graph shape and behaviour are identical for the eight existing components. `seed_params` is a thin deterministic node: it marks the Understand + Extract steps `done` (so the live tracker is correct), emits a deterministic plan narration + any unusual-value warnings, and routes to `analyse`. **No `understand`/`extract` LLM call executes on the params-direct path.** From `analyse` on the shared pipeline is unchanged. The review-memo narration (one grounded Gemini call) still runs, consistent with every component — only the **intake** is bypassed.
+
+This path adds one node and one conditional entry to the graph; it changes no existing node's behaviour and no interface signature. `finalize` additionally skips its refinement-suggestions LLM call when `params_direct` is set (a form-only component has no NL prompt box for a chip to fill), so a params-direct run makes **at most one** LLM call — the review-memo narration.
+
+### New artefact kind: the PDF sheet (additive)
+
+A component may emit artefact **kinds beyond** the shared fixed set by returning extra keys from `draw()` (whose signature stays `dict[str, Path]`). The `draw` node emits the fixed `ga_dxf`/`ga_svg` first, then any additional keys the module returns — backward-compatible, since existing modules return only those two. The M-00004 component adds the kind **`m00004_sheet` → `m00004_sheet.pdf`** (mime `application/pdf`, disposition `inline`): a hand-built **reportlab** drawing sheet styled like the RDSO/M-00004 standard (dimensioned cross-section, a1..h reinforcement in position, schedule table, notations, notes, title block). It is whitelisted in `ARTIFACT_FILES` (`src/api/designs.py`) and recorded in `artifacts.kind` (a free-text column — **no migration**). `reportlab` (`>=4.0,<5`, BSD, pure-Python) is added for this — it needs no native/Qt deps and honours the repo's no-AGPL stance. All other kinds/filenames reuse the shared fixed set.
+### UX redesign (Phase 4 Redesign) — IA-only, no backend rearchitecture
+
+The Phase 4 Redesign (see [roadmap.md](roadmap.md#phases-of-development) and [ui.md](ui.md)) reorganises the SAME frontend elements into a lifecycle-oriented, extensible information architecture (design-as-record, a Define→Design→Review Stage Rail with visibly-coming Simulate/Test/Approve stubs, a prompt-first + gallery entry, and a per-design Overview replacing the always-on generic "Stability" tab). It is **primarily a frontend effort**; the backend, agent graph, Component Registry, API routes, artefact set and DB schema are **unchanged**. Specifically:
+
+- **Design-records status chips** (Draft / Reviewed ✓ / Needs revision ✗) are **derived client-side** from the existing `design_runs.status` + `design_runs.verdict` (both already persisted and already returned by `GET /api/designs` and `GET /api/designs/{run_id}`). **No new status column is added** — the honest, minimal change is a UI derivation, not a schema migration.
+- **Overview key numbers** are rendered generically from the existing `type_summary` (persisted as `design_runs.type_summary_json`, surfaced in the snapshot) — the same data that drove the old Stability panel, now the design's landing dashboard.
+- **Code/standards traceability** at design level reuses the component's declared `codes` (from `registry.list_components()` / `GET /api/components`) plus the clause citations already inside `calc_sheet.json` / `compliance.json`.
+- **Token/cost per-run vs session split** reuses the existing SSE `tokens` event (`cost_usd` + `session_total_cost_usd`); the redesign only presents the two totals distinctly.
+- **Projects grouping** is a pure frontend visual stub ("coming") — no `projects` table, no API, not built this version.
+
+No new endpoint, migration, graph node, or Python dependency is introduced by the redesign. If a later redesign phase needs records-list filtering beyond today's `session_id`/`limit`/`offset`, it extends `GET /api/designs` query params only (the same slot already noted for `p3-library-api`).
+
 ## Data Flow
 
 1. **Trigger:** user submits a natural-language prompt (`POST /api/sessions/{id}/designs`). The API creates a `design_runs` row (status `running`), starts the LangGraph run in a background thread, and returns `run_id` immediately.
@@ -161,6 +186,7 @@ There are **no** other external services: no hosted CAD APIs, no licensed softwa
 | `build123d` | `==0.11.1` (exact pin — pre-1.0 API drift) | 3D solid from the same parameters; `export_gltf(binary=True)` → GLB; `export_step()` → STEP |
 | `anastruct` | `==1.7.0` | Independent 2D FE cross-check of the box frame (Phase 2); BMD/SFD via matplotlib |
 | `matplotlib` | `>=3.9,<4` | BMD/SFD diagram rendering (SVG/PNG) and any raster/PDF output. **Replaces PyMuPDF everywhere** — PyMuPDF is AGPL and is banned |
+| `reportlab` | `>=4.0,<5` | The M-00004 standard PDF drawing sheet (`m00004_sheet.pdf`) — hand-built parametric canvas: dimensioned cross-section + a1..h reinforcement in position + schedule table + notations + notes + title block. BSD-licensed, pure-Python, no native/Qt deps (Windows-demo-safe; honours the no-AGPL stance). Added by the M-00004 component addition |
 | `google-genai` | `>=2.9.0` (existing) | Gemini SDK behind the provider abstraction |
 | `react-zoom-pan-pinch` | `^4.0.3` | Pan/zoom wrapper around the inline drawing SVG |
 | `@google/model-viewer` | `^4.3.1` | GLB display web component (dynamic import, `ssr: false`) |

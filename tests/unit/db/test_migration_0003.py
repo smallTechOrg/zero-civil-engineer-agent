@@ -26,7 +26,9 @@ def migrated_db(tmp_path, monkeypatch):
 
     cfg = Config(str(REPO_ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(REPO_ROOT / "alembic"))
-    command.upgrade(cfg, "head")
+    # Pin to 0003: this suite asserts the state AT revision 0003 specifically
+    # (later migrations advance `head`, e.g. 0004 refinement lineage).
+    command.upgrade(cfg, "0003")
 
     engine = create_engine(f"sqlite:///{db_path}")
     yield engine, cfg

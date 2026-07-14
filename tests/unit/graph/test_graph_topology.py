@@ -1,7 +1,7 @@
 """Graph assembly — compiles without DB/keys; topology matches spec/agent.md."""
 
 EXPECTED_NODES = {
-    "understand", "extract", "clarify", "analyse", "check",
+    "understand", "seed_params", "extract", "clarify", "analyse", "check",
     "draw", "model3d", "review", "finalize", "handle_error",
 }
 
@@ -11,7 +11,7 @@ def test_graph_compiles_without_env():
     assert compiled_graph is not None
 
 
-def test_graph_has_exactly_the_ten_spec_nodes():
+def test_graph_has_exactly_the_spec_nodes():
     from graph.agent import compiled_graph
     nodes = set(compiled_graph.get_graph().nodes) - {"__start__", "__end__"}
     assert nodes == EXPECTED_NODES
@@ -34,7 +34,19 @@ def test_terminal_nodes_end_the_graph():
         assert (terminal, "__end__") in edges
 
 
-def test_entry_point_is_understand():
+def test_conditional_entry_routes_nl_to_understand_and_params_to_seed_params():
     from graph.agent import compiled_graph
     edges = {(e.source, e.target) for e in compiled_graph.get_graph().edges}
+    # NL runs enter `understand` (byte-identical); params-direct enter `seed_params`.
     assert ("__start__", "understand") in edges
+    assert ("__start__", "seed_params") in edges
+
+
+def test_seed_params_flows_to_analyse():
+    from graph.agent import compiled_graph
+    edges = {
+        (e.source, e.target)
+        for e in compiled_graph.get_graph().edges
+        if not e.conditional
+    }
+    assert ("seed_params", "analyse") in edges

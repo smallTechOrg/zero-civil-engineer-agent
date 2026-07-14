@@ -111,8 +111,48 @@ def test_rejected_narration_falls_back_to_the_deterministic_memo(review_state, t
     assert entry["status"] == "done"
 
 
-def test_llm_transport_failure_is_fatal_transparent(review_state):
-    _FakeLLMClient.error = RuntimeError("Gemini call failed after one retry")
+def test_narration_transport_failure_falls_back_to_the_deterministic_memo(
+    review_state, tmp_path
+):
+    # A transport/quota exception (e.g. Gemini 429 RESOURCE_EXHAUSTED) on the
+    # OPTIONAL memo-narration call must be NON-FATAL — the deterministic memo,
+    # verdict and type summary still compose and the run reaches completion.
+    _FakeLLMClient.error = RuntimeError(
+        "429 RESOURCE_EXHAUSTED — monthly spending cap reached"
+    )
+
+    updates = nodes_module.review(review_state)
+
+    assert updates.get("error") is None  # transport failure is NEVER fatal
+    assert updates["verdict"] == "recommended_for_approval"
+    assert updates["type_summary"]  # type summary still produced
+    assert len(updates["checklist"]) == 12
+    assert updates["fe_comparison"]["within_tolerance"] is True
+
+    memo_path = tmp_path / "artifacts" / review_state["run_id"] / "proof_memo.md"
+    memo = memo_path.read_text(encoding="utf-8")  # proof_memo.md written
+    assert "RECOMMENDED FOR APPROVAL" in memo  # deterministic render_memo(None)
+
+    events = _drain(review_state["run_id"])
+    kinds = [e["data"]["kind"] for e in events if e["event"] == "artefact"]
+    assert kinds == ["bmd_svg", "sfd_svg", "compliance", "proof_memo"]
+    warnings = [e["data"]["message"] for e in events if e["event"] == "warning"]
+    assert any("memo narration was unavailable" in message for message in warnings)
+    # No LLM usage recorded — the call never returned a result.
+    assert not any(e["event"] == "tokens" for e in events)
+    entry = next(s for s in updates["steps"] if s["name"] == "Review")
+    assert entry["status"] == "done"  # the node completes, never routes to error
+
+
+def test_genuine_proof_check_failure_is_still_fatal(review_state, monkeypatch):
+    # A non-narration failure (proof_check computation raising) must STILL fail
+    # the run — only the narration call became non-fatal.
+    module = nodes_module._module(review_state)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("independent FE re-solve diverged")
+
+    monkeypatch.setattr(type(module), "proof_check", staticmethod(_boom))
 
     updates = nodes_module.review(review_state)
 

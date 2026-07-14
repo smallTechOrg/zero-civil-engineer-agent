@@ -119,7 +119,7 @@ def test_hard_range_boundary_values_are_accepted(field, boundary_value):
     [
         ("gauge", "MG"),
         ("loading_standard", "32.5t-DFC"),
-        ("concrete_grade", "M40"),
+        ("concrete_grade", "M45"),
         ("steel_grade", "Fe550"),
     ],
 )
